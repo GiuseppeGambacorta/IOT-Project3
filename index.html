@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <title>HMI</title>
     <style>
@@ -79,7 +80,7 @@
             padding-bottom: 0 !important;
             display: flex;
             flex-direction: row;
-            align-items:center;
+            align-items: center;
             justify-content: space-between;
         }
 
@@ -195,7 +196,8 @@
     <footer>
         <span class="footer-text">© 2025 IOT Progetto 3</span>
         <div class="alarm-control-footer">
-            <button id="reset-alarm">Problema Risolto</button>
+            <button id="reset-alarm" hx-post="http://localhost:8080/api/reset-alarm" hx-trigger="click"
+                hx-swap="none">Problema Risolto</button>
         </div>
     </footer>
 </body>
@@ -204,8 +206,8 @@
 
 
 <script>
- 
-    const NUM_PUNTI = 100; 
+
+    const NUM_PUNTI = 100;
 
     const labels = Array.from({ length: NUM_PUNTI }, (_, i) => `T${i + 1}`);
     const data = {
@@ -234,7 +236,7 @@
 
         data.datasets[0].data.shift();
         data.datasets[0].data.push(nuovoValore);
- 
+
         data.labels.shift();
         data.labels.push('T' + (parseInt(data.labels[data.labels.length - 1].substring(1)) + 1));
 
