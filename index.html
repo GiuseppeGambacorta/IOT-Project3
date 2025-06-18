@@ -5,164 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@latest/css/pico.min.css">
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="style.css">
+    <!-- Rimosso script htmx -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <title>HMI</title>
-    <style>
-        html,
-        body {
-            height: 100%;
-            /* Serve per il layout a tutta altezza */
-        }
-
-        body {
-            min-height: 100vh;
-            /* Il body occupa almeno tutta la finestra */
-            display: flex;
-            /* Flexbox verticale */
-            flex-direction: column;
-            /* Colonna: header, main, footer */
-        }
-
-        main {
-            flex: 1;
-            /* Il main si espande per occupare lo spazio disponibile tra header e footer */
-        }
-
-        .manual-control {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .manual-control .button-row {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-        }
-
-        .manual-control h2 {
-            margin-bottom: 2.5rem;
-            /* Aumenta lo spazio sotto il titolo */
-        }
-
-        .manual-control .button-top {
-            margin-bottom: 1rem;
-            display: flex;
-            justify-content: center;
-        }
-
-        header {
-            background-color: #0a3d62;
-            color: #fff;
-            margin-bottom: 0rem;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            padding-right: 1rem;
-            padding-left: 1rem;
-        }
-
-        header nav ul li {
-            padding-top: 0.7rem;
-            padding-bottom: 0.7rem;
-        }
-
-        header a,
-        header strong {
-            color: #fff !important;
-        }
-
-        footer {
-            background-color: #0a3d62;
-            color: #fff;
-            padding: 0rem 1rem;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .alarm-control-footer button {
-            font-size: 1rem;
-            padding: 0.0rem 0.5rem;
-            height: 2.2rem;
-            margin-top: 0.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .dashboard-row {
-            display: flex;
-            gap: 2rem;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-
-        .dashboard-col {
-            flex: 1 1 350px;
-            min-width: 300px;
-        }
-
-        .system-info {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .system-info ul {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            /* Distribuisce equamente */
-            height: 100%;
-            margin: 0;
-            padding: 0 1rem;
-            list-style: none;
-        }
-
-        .system-info li {
-            text-align: left;
-            padding: 0.5rem 0rem;
-        }
-
-        .manual-control {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-        }
-
-        section h2 {
-            text-align: center;
-        }
-
-        .offline {
-            color: red !important;
-            animation: blink 1s steps(2, start) infinite;
-        }
-
-        .online {
-            color: green;
-        }
-
-        @keyframes blink {
-            0% {
-                color: red;
-            }
-
-            50% {
-                color: #fff;
-            }
-
-            100% {
-                color: red;
-            }
-        }
-    </style>
+    <script src="script.js"></script>
 </head>
 
 <body>
@@ -194,8 +41,14 @@
                         <li>Temperatura media: <span id="temp-avg">--</span> °C</li>
                         <li>Temperatura max: <span id="temp-max">--</span> °C</li>
                         <li>Temperatura min: <span id="temp-min">--</span> °C</li>
-                        <li>Stato sistema: <span id="system-state">NORMAL</span></li>
-                        <li>Apertura finestra: <span id="window-level">0</span>%</li>
+
+                        <li>Stato sistema: 
+                            <span id="system-status">NORMAL</span>
+                        </li>
+                        
+                        <li>Apertura finestra: 
+                            <span id="window-level">0</span>%
+                        </li>
                     </ul>
                 </div>
             </section>
@@ -218,88 +71,13 @@
     </main>
 
     <footer>
- 
+
         <div class="alarm-control-footer">
-            <button id="reset-alarm" hx-post="http://localhost:8080/api/reset-alarm" hx-trigger="click"
-                hx-swap="none">Problema Risolto</button>
+            <button id="reset-alarm">Problema Risolto</button>
         </div>
+
     </footer>
+  
 </body>
 
 </html>
-
-
-<script>
-
-    const NUM_PUNTI = 100;
-
-    const labels = Array.from({ length: NUM_PUNTI }, (_, i) => `T${i + 1}`);
-    const data = {
-        labels: labels,
-        datasets: [{
-            label: 'Temperatura (°C)',
-            data: Array.from({ length: NUM_PUNTI }, () => Math.floor(Math.random() * 9) + 20),
-            borderColor: 'rgb(75, 192, 192)',
-            tension: 0.1
-        }]
-    };
-
-    const config = {
-        type: 'line',
-        data: data,
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    };
-
-    setInterval(() => {
-        const nuovoValore = Math.floor(Math.random() * 9) + 20;
-
-        data.datasets[0].data.shift();
-        data.datasets[0].data.push(nuovoValore);
-
-        data.labels.shift();
-        data.labels.push('T' + (parseInt(data.labels[data.labels.length - 1].substring(1)) + 1));
-
-        config.data = data;
-        window.tempChart.update();
-    }, 100);
-
-    // Salva il riferimento al grafico per poterlo aggiornare
-    window.tempChart = new Chart(
-        document.getElementById('tempChart'),
-        config
-    );
-
-    function aggiornaStatoDispositivi() {
-        fetch("http://localhost:8080/api/stato-dispositivi")
-            .then(r => r.json())
-            .then(stato => {
-                document.querySelectorAll('[data-device]').forEach(link => {
-                    const nome = link.getAttribute('data-device');
-                    if (stato[nome] === false) {
-                        link.classList.add('offline');
-                        link.classList.remove('online');
-                    } else {
-                        link.classList.add('online');
-                        link.classList.remove('offline');
-                    }
-                });
-            })
-            .catch(() => {
-                // Se la fetch fallisce, tutti offline
-                document.querySelectorAll('[data-device]').forEach(link => {
-                    link.classList.add('offline');
-                    link.classList.remove('online');
-                });
-            });
-    }
-    setInterval(aggiornaStatoDispositivi, 2000);
-    aggiornaStatoDispositivi();
-
-
-
-</script>
