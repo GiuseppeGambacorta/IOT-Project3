@@ -139,6 +139,29 @@
         section h2 {
             text-align: center;
         }
+
+        .offline {
+            color: red !important;
+            animation: blink 1s steps(2, start) infinite;
+        }
+
+        .online {
+            color: green;
+        }
+
+        @keyframes blink {
+            0% {
+                color: red;
+            }
+
+            50% {
+                color: #fff;
+            }
+
+            100% {
+                color: red;
+            }
+        }
     </style>
 </head>
 
@@ -149,9 +172,9 @@
                 <li><strong>IOT Progetto 3</strong></li>
             </ul>
             <ul>
-                <li><a href="#">Home</a></li>
-                <li><a href="#">Stato</a></li>
-                <li><a href="#">Impostazioni</a></li>
+                <li><a href="#" data-device="server">Server</a></li>
+                <li><a href="#" data-device="arduino">Arduino</a></li>
+                <li><a href="#" data-device="esp32">ESP32</a></li>
             </ul>
         </nav>
     </header>
@@ -168,6 +191,7 @@
                     <h2>Stato Sistema</h2>
                     <ul>
                         <li>Temperatura attuale: <span id="temp-current">--</span> °C</li>
+                        <li>Temperatura media: <span id="temp-avg">--</span> °C</li>
                         <li>Temperatura max: <span id="temp-max">--</span> °C</li>
                         <li>Temperatura min: <span id="temp-min">--</span> °C</li>
                         <li>Stato sistema: <span id="system-state">NORMAL</span></li>
@@ -194,7 +218,7 @@
     </main>
 
     <footer>
-        <span class="footer-text">© 2025 IOT Progetto 3</span>
+ 
         <div class="alarm-control-footer">
             <button id="reset-alarm" hx-post="http://localhost:8080/api/reset-alarm" hx-trigger="click"
                 hx-swap="none">Problema Risolto</button>
@@ -249,4 +273,33 @@
         document.getElementById('tempChart'),
         config
     );
+
+    function aggiornaStatoDispositivi() {
+        fetch("http://localhost:8080/api/stato-dispositivi")
+            .then(r => r.json())
+            .then(stato => {
+                document.querySelectorAll('[data-device]').forEach(link => {
+                    const nome = link.getAttribute('data-device');
+                    if (stato[nome] === false) {
+                        link.classList.add('offline');
+                        link.classList.remove('online');
+                    } else {
+                        link.classList.add('online');
+                        link.classList.remove('offline');
+                    }
+                });
+            })
+            .catch(() => {
+                // Se la fetch fallisce, tutti offline
+                document.querySelectorAll('[data-device]').forEach(link => {
+                    link.classList.add('offline');
+                    link.classList.remove('online');
+                });
+            });
+    }
+    setInterval(aggiornaStatoDispositivi, 2000);
+    aggiornaStatoDispositivi();
+
+
+
 </script>
