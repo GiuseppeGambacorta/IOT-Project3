@@ -36,6 +36,28 @@ function aggiornaDatiTemperatura(chart) {
         });
 }
 
+function controlloAllarmi(){
+    fetch("http://localhost:8080/api/get-alarms")
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return r.json();
+        })
+        .then(alarms => {
+            const button = document.getElementById('reset-alarm')
+            button.classList.toggle('in-alarm', alarms.attivo);
+            if (alarms.attivo){
+                button.textContent = "Reset Allarme";
+            } else {
+                button.textContent = "No Allarmi";   
+            }
+        })
+        .catch(error => {
+            console.error("Errore nell'aggiornare lo stato degli allarmi ", error);
+        });
+}
+
 function aggiornaStatoDispositivi() {
     fetch("http://localhost:8080/api/devices-states")
         .then(r => {
@@ -159,6 +181,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     aggiornaPosizioneFinestra();
     setInterval(aggiornaPosizioneFinestra, 500);
+
+    controlloAllarmi();
+    setInterval(controlloAllarmi, 1000);
 
     document.getElementById('cambia-modalita').addEventListener('click', () => {
         sendPostRequest('http://localhost:8080/api/change-mode');

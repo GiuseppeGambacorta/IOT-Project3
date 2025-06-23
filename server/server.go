@@ -27,14 +27,16 @@ func startApiServer() {
 	apiController := NewController(useMockController)
 
 	routes := map[string]http.HandlerFunc{
-		"/api/temperature-stats": apiController.TemperatureStats,
-		"/api/devices-states":    apiController.DevicesStates,
-		"/api/system-status":     apiController.SystemStatus,
-		"/api/window-position":   apiController.WindowPosition,
-		"/api/change-mode":       apiController.ChangeMode,
-		"/api/open-window":       apiController.OpenWindow,
-		"/api/close-window":      apiController.CloseWindow,
-		"/api/reset-alarm":       apiController.ResetAlarm,
+		"/api/temperature-stats":  apiController.TemperatureStats,
+		"/api/devices-states":     apiController.DevicesStates,
+		"/api/system-status":      apiController.SystemStatus,
+		"/api/window-position":    apiController.WindowPosition,
+		"/api/change-mode":        apiController.ChangeMode,
+		"/api/open-window":        apiController.OpenWindow,
+		"/api/close-window":       apiController.CloseWindow,
+		"/api/reset-alarm":        apiController.ResetAlarm,
+		"/api/get-alarms":         apiController.GetAlarms,
+		"/api/get-operative-mode": apiController.GetOperativeMode,
 	}
 
 	for path, handler := range routes {

@@ -17,6 +17,8 @@ type APIController interface {
 	OpenWindow(w http.ResponseWriter, r *http.Request)
 	CloseWindow(w http.ResponseWriter, r *http.Request)
 	ResetAlarm(w http.ResponseWriter, r *http.Request)
+	GetAlarms(w http.ResponseWriter, r *http.Request)
+	GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
 // --- Factory Function ---
@@ -96,6 +98,24 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+		return
+	}
+	fmt.Println("Allarme Attivo! (REALE)")
+	w.Write([]byte("OK"))
+}
+
+func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+		return
+	}
+	fmt.Println("Modalita Manuale (REALE)")
+	w.Write([]byte("OK"))
+}
+
 // --- Implementazione Mock (MockController) ---
 
 type MockController struct{}
@@ -142,4 +162,18 @@ func (c *MockController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 func (c *MockController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Allarme resettato! (MOCK)")
 	w.Write([]byte("OK"))
+}
+
+func (c *MockController) GetAlarms(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Richiesta stato allarmi (MOCK)")
+	w.Header().Set("Content-Type", "application/json")
+	states := map[string]bool{"attivo": true}
+	json.NewEncoder(w).Encode(states)
+}
+
+func (c *MockController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Richiesta stato impianto (MOCK)")
+	w.Header().Set("Content-Type", "application/json")
+	states := map[string]bool{"manuale": true}
+	json.NewEncoder(w).Encode(states)
 }
