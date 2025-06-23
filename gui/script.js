@@ -148,7 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartConfig = createChartConfig(initialData);
     const tempChart = new Chart(document.getElementById('tempChart'), chartConfig);
 
-    // Avvio aggiornamenti periodici
     aggiornaDatiTemperatura(tempChart);
     setInterval(() => aggiornaDatiTemperatura(tempChart), 100);
 
@@ -161,7 +160,6 @@ document.addEventListener('DOMContentLoaded', () => {
     aggiornaPosizioneFinestra();
     setInterval(aggiornaPosizioneFinestra, 500);
 
-    // Aggiunta degli event listener per i bottoni
     document.getElementById('cambia-modalita').addEventListener('click', () => {
         sendPostRequest('http://localhost:8080/api/change-mode');
     });

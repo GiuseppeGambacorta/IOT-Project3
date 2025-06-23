@@ -110,7 +110,7 @@ func (c *MockController) TemperatureStats(w http.ResponseWriter, r *http.Request
 func (c *MockController) DevicesStates(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Richiesta stato dispositivi (MOCK)")
 	w.Header().Set("Content-Type", "application/json")
-	states := map[string]bool{"server": true, "arduino": true, "esp32": true}
+	states := map[string]bool{"server": true, "arduino": false, "esp32": true}
 	json.NewEncoder(w).Encode(states)
 }
 
