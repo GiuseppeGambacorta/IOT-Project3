@@ -111,7 +111,7 @@ footer {
 }
 
 .manual-control h2 {
-    margin-bottom: 2.5rem;
+    margin-bottom: 0.5rem;
     /* Aumenta lo spazio sotto il titolo */
 }
 
@@ -119,6 +119,16 @@ footer {
     margin-bottom: 1rem;
     display: flex;
     justify-content: center;
+}
+
+
+.manual-control section {
+    text-align: center;
+}
+
+#actual-mode {
+    display: block; /* Lo trasforma in un elemento a blocco per accettare il margine */
+    margin-bottom: 1rem;
 }
 
 .alarm-control-footer button {

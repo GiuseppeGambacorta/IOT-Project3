@@ -58,6 +58,28 @@ function controlloAllarmi(){
         });
 }
 
+
+function controlloModalita(){
+    fetch("http://localhost:8080/api/get-operative-mode")
+        .then(r => {
+            if (!r.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return r.json();
+        })
+        .then(alarms => {
+            const text = document.getElementById('actual-mode')
+            if (alarms.manuale){
+                text.textContent = "Modalità Attuale: Manuale";
+            } else {
+                text.textContent = "Modalità Attuale: Automatico";
+            }
+        })
+        .catch(error => {
+            console.error("Errore nell'aggiornare lo stato degli allarmi ", error);
+        });
+}
+
 function aggiornaStatoDispositivi() {
     fetch("http://localhost:8080/api/devices-states")
         .then(r => {
@@ -184,6 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     controlloAllarmi();
     setInterval(controlloAllarmi, 1000);
+
+    controlloModalita();
+    setInterval(controlloModalita, 1000);
 
     document.getElementById('cambia-modalita').addEventListener('click', () => {
         sendPostRequest('http://localhost:8080/api/change-mode');
