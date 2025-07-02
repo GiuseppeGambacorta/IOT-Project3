@@ -1,7 +1,6 @@
-#ifndef __TEMPERATURESENSOR__
-#define __TEMPERATURESENSOR__
+#pragma once
 
-#include "ArduinoStandardLibrary.h"
+#include <ArduinoStandardLibrary.h>
 
 class TemperatureSensor{
     public:
@@ -13,6 +12,3 @@ class TemperatureSensor{
         int temperature;
         AnalogInput* sensor;
 };
-
-
-#endif

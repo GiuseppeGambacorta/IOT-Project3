@@ -1,6 +1,8 @@
 #include <Arduino.h>
-#include "ArduinoStandardLibrary.h"
+#include <ArduinoStandardLibrary.h>
 #include <TemperatureSensor.h>
+#include <SchedulerLibrary.h>
+
 
 
 
@@ -9,35 +11,35 @@ DigitalOutput Redled = DigitalOutput(1);
 DigitalOutput Greenled = DigitalOutput(2);
 
 
-InputTask inputTask(levelDetector, userDetector, tempSensor, openButton, closeButton);
-OutputTask outputTask(door, display ,ledGreen, ledRed);
+//InputTask inputTask(levelDetector, userDetector, tempSensor, openButton, closeButton);
+//OutputTask outputTask(door, display ,ledGreen, ledRed);
 
-Scheduler scheduler;
+//Scheduler scheduler;
 
 
 void setup() {
     
-    scheduler.init(50);
+    //scheduler.init(50);
     
 
 
-    inputTask.init(50);
+    //inputTask.init(50);
   
-    outputTask.init(100);
+    //outputTask.init(100);
 
 
 
-    inputTask.setActive(true);
+    //inputTask.setActive(true);
  
-    outputTask.setActive(true);
+   // outputTask.setActive(true);
    
 
 
-    scheduler.addTask(&inputTask);
-    scheduler.addTask(&outputTask);
+    //scheduler.addTask(&inputTask);
+    //.addTask(&outputTask);
 }
 
 void loop() {
-  scheduler.schedule();
+  //scheduler.schedule();
   
 }
