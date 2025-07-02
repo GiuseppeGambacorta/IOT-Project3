@@ -53,10 +53,8 @@ func startApiServer() {
 func main() {
 	go startApiServer()
 
-	// Mantieni il programma principale in esecuzione
 	fmt.Println("Server avviato in background.")
 
-	// Esempio di come il programma principale potrebbe continuare a fare altro
 	for {
 		fmt.Println("Il programma principale è ancora in esecuzione...")
 		time.Sleep(10 * time.Second)
