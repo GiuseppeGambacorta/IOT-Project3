@@ -83,15 +83,15 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 			var newState string
 			var newFreq time.Duration
 
-			if temp >= t2 {
-				newState = "ALARM"
-				newFreq = fastFreq
-			} else if temp >= t1 {
+			if temp <= t1 {
+				newState = "NORMAL"
+				newFreq = normalFreq
+			} else if temp > t1 && temp <= t2 {
 				newState = "HOT-STATE"
 				newFreq = fastFreq
 			} else {
-				newState = "NORMAL"
-				newFreq = normalFreq
+				newState = "ALARM"
+				newFreq = fastFreq
 			}
 
 			if newState != state.SystemStatus {

@@ -140,10 +140,10 @@ function aggiornaStatoSistema() {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
-            return response.text();
+            return response.json();
         })
-        .then(status => {
-            document.getElementById('system-status').textContent = status;
+        .then(data => {
+            document.getElementById('system-status').textContent = data.status;
         })
         .catch(error => {
             console.error("Errore nell'aggiornare lo stato del sistema:", error);
@@ -158,10 +158,10 @@ function aggiornaPosizioneFinestra() {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
-            return response.text();
+            return response.json();
         })
-        .then(position => {
-            document.getElementById('window-level').textContent = position;
+        .then(data => {
+            document.getElementById('window-level').textContent = data.position;
         })
         .catch(error => {
             console.error("Errore nell'aggiornare la posizione della finestra:", error);
