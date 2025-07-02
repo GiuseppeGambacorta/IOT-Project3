@@ -4,7 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
+
+type SystemState struct {
+	CurrentTemp      float64
+	SystemStatus     string // "NORMAL", "HOT-STATE", "ALARM"
+	SamplingInterval time.Duration
+	DevicesOnline    map[string]bool
+	WindowPosition   int
+}
+
+type StateRequest struct {
+	ReplyChan chan SystemState
+}
 
 // --- Interfaccia Controller ---
 
@@ -23,19 +36,19 @@ type APIController interface {
 
 // --- Factory Function ---
 
-func NewController(useMock bool) APIController {
+func NewController(useMock bool, requests chan<- StateRequest) APIController {
 	if useMock {
 		fmt.Println("INFO: Utilizzo del controller MOCK.")
 		return &MockController{}
 	}
 	fmt.Println("INFO: Utilizzo del controller REALE.")
-	return &AppController{}
+	return &AppController{requestsChan: requests}
 }
 
 // --- Implementazione Reale (AppController) ---
 
 type AppController struct {
-	// Qui andranno le dipendenze reali, es. client MQTT, connessione DB, etc.
+	requestsChan chan<- StateRequest
 }
 
 func (c *AppController) TemperatureStats(w http.ResponseWriter, r *http.Request) {
