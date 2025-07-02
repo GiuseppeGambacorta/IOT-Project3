@@ -7,12 +7,18 @@ import (
 	"time"
 )
 
+// SystemState contiene tutti i dati condivisi dell'applicazione.
+// Ho aggiunto OperativeMode per gestire la modalità manuale/automatica.
 type SystemState struct {
 	CurrentTemp      float64
+	AverageTemp      float64
+	MaxTemp          float64
+	MinTemp          float64
 	SystemStatus     string // "NORMAL", "HOT-STATE", "ALARM"
 	SamplingInterval time.Duration
 	DevicesOnline    map[string]bool
 	WindowPosition   int
+	OperativeMode    string // "AUTOMATIC" o "MANUAL"
 }
 
 type StateRequest struct {
@@ -52,35 +58,75 @@ type AppController struct {
 }
 
 func (c *AppController) TemperatureStats(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta statistiche temperatura (REALE)")
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
+	stats := map[string]float64{
+		"current": state.CurrentTemp,
+		"average": state.AverageTemp,
+		"max":     state.MaxTemp,
+		"min":     state.MinTemp,
+	}
 	w.Header().Set("Content-Type", "application/json")
-	stats := map[string]float64{"current": 22.5, "average": 21.8, "max": 25.1, "min": 19.5}
 	json.NewEncoder(w).Encode(stats)
 }
 
 func (c *AppController) DevicesStates(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta stato dispositivi (REALE)")
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
 	w.Header().Set("Content-Type", "application/json")
-	states := map[string]bool{"server": true, "arduino": true, "esp32": false}
-	json.NewEncoder(w).Encode(states)
+	json.NewEncoder(w).Encode(state.DevicesOnline)
 }
 
 func (c *AppController) SystemStatus(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta stato sistema (REALE)")
-	w.Write([]byte("NORMAL"))
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": state.SystemStatus})
 }
 
 func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta posizione finestra (REALE)")
-	w.Write([]byte("50"))
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"position": state.WindowPosition})
 }
+
+func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
+	isAlarmActive := state.SystemStatus == "ALARM"
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"attivo": isAlarmActive})
+}
+
+func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
+	replyChan := make(chan SystemState)
+	c.requestsChan <- StateRequest{ReplyChan: replyChan}
+	state := <-replyChan
+
+	isManual := state.OperativeMode == "MANUAL"
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"manuale": isManual})
+}
+
+// --- Metodi di scrittura (non ancora implementati con logica reale) ---
 
 func (c *AppController) ChangeMode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta cambio modalità (REALE)")
+	fmt.Println("Richiesta cambio modalità (REALE) - Logica da implementare")
 	w.Write([]byte("OK"))
 }
 
@@ -89,7 +135,7 @@ func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta apertura finestra (REALE)")
+	fmt.Println("Richiesta apertura finestra (REALE) - Logica da implementare")
 	w.Write([]byte("OK"))
 }
 
@@ -98,7 +144,7 @@ func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta chiusura finestra (REALE)")
+	fmt.Println("Richiesta chiusura finestra (REALE) - Logica da implementare")
 	w.Write([]byte("OK"))
 }
 
@@ -107,25 +153,7 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Allarme resettato! (REALE)")
-	w.Write([]byte("OK"))
-}
-
-func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	fmt.Println("Allarme Attivo! (REALE)")
-	w.Write([]byte("OK"))
-}
-
-func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
-		return
-	}
-	fmt.Println("Modalita Manuale (REALE)")
+	fmt.Println("Allarme resettato! (REALE) - Logica da implementare")
 	w.Write([]byte("OK"))
 }
 

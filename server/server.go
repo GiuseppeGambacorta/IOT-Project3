@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,11 +31,17 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 	const t2 float64 = 70.0
 	const normalFreq time.Duration = 500 * time.Millisecond
 	const fastFreq time.Duration = 100 * time.Millisecond
+	const historySize = 100 // Manteniamo le ultime 100 letture
 
 	state := SystemState{
 		SystemStatus:     "NORMAL",
 		SamplingInterval: normalFreq,
+		OperativeMode:    "AUTOMATIC",
+		MinTemp:          math.Inf(1),  // Inizializza min a +infinito
+		MaxTemp:          math.Inf(-1), // Inizializza max a -infinito
 	}
+	var tempHistory []float64
+
 	// Invia subito la frequenza iniziale al publisher
 	intervalUpdatesChan <- state.SamplingInterval
 
@@ -42,13 +49,37 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 
 	for {
 		select {
-		// Arriva una richiesta di stato dall'API
 		case req := <-requestsChan:
 			req.ReplyChan <- state
 
-		// Arriva un nuovo dato di temperatura dal listener MQTT
 		case temp := <-tempUpdatesChan:
+			// Aggiorna la cronologia delle temperature
+			tempHistory = append(tempHistory, temp)
+			if len(tempHistory) > historySize {
+				tempHistory = tempHistory[1:] // Mantiene la dimensione della cronologia
+			}
+
+			// Ricalcola le statistiche
+			var sum float64
+			min := math.Inf(1)
+			max := math.Inf(-1)
+			for _, t := range tempHistory {
+				sum += t
+				if t < min {
+					min = t
+				}
+				if t > max {
+					max = t
+				}
+			}
+
+			// Aggiorna lo stato
 			state.CurrentTemp = temp
+			state.AverageTemp = sum / float64(len(tempHistory))
+			state.MinTemp = min
+			state.MaxTemp = max
+
+			// Logica di stato basata sulla temperatura corrente
 			var newState string
 			var newFreq time.Duration
 
@@ -71,7 +102,6 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 			if newFreq != state.SamplingInterval {
 				log.Printf("INFO: Frequenza di campionamento cambiata a %v", newFreq)
 				state.SamplingInterval = newFreq
-				// Invia la nuova frequenza al publisher MQTT
 				intervalUpdatesChan <- state.SamplingInterval
 			}
 		}
