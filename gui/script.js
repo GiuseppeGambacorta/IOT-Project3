@@ -67,12 +67,15 @@ function controlloModalita(){
             }
             return r.json();
         })
-        .then(alarms => {
+        .then(data => {
             const text = document.getElementById('actual-mode')
-            if (alarms.manuale){
+            const button = document.getElementById('cambia-modalita')
+            if (data.manuale){
                 text.textContent = "Modalità Attuale: Manuale";
+                button.textContent = "Modalità Automatica"
             } else {
                 text.textContent = "Modalità Attuale: Automatico";
+                button.textContent = "Modalità Manuale"
             }
         })
         .catch(error => {

@@ -21,7 +21,18 @@ type SystemState struct {
 	OperativeMode    string // "AUTOMATIC" o "MANUAL"
 }
 
+type RequestType int
+
+const (
+	RequestReadState   RequestType = iota // 0 - Richiesta di lettura
+	RequestToggleMode                     // 1 - Comando per cambiare modalità
+	RequestOpenWindow                     // 2 - Comando per aprire la finestra
+	RequestCloseWindow                    // 3 - Comando per chiudere la finestra
+	RequestResetAlarm                     // 4 - Comando per resettare l'allarme
+)
+
 type StateRequest struct {
+	Type      RequestType
 	ReplyChan chan SystemState
 }
 
@@ -120,14 +131,14 @@ func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
 // --- Metodi di scrittura (non ancora implementati con logica reale) ---
-
 func (c *AppController) ChangeMode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta cambio modalità (REALE) - Logica da implementare")
-	w.Write([]byte("OK"))
+	c.requestsChan <- StateRequest{Type: RequestToggleMode}
+	fmt.Println("INFO: Inviato comando di cambio modalità.")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
@@ -135,8 +146,9 @@ func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta apertura finestra (REALE) - Logica da implementare")
-	w.Write([]byte("OK"))
+	c.requestsChan <- StateRequest{Type: RequestOpenWindow}
+	fmt.Println("INFO: Inviato comando di apertura finestra.")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
@@ -144,8 +156,9 @@ func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Richiesta chiusura finestra (REALE) - Logica da implementare")
-	w.Write([]byte("OK"))
+	c.requestsChan <- StateRequest{Type: RequestCloseWindow}
+	fmt.Println("INFO: Inviato comando di chiusura finestra.")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
@@ -153,8 +166,9 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	fmt.Println("Allarme resettato! (REALE) - Logica da implementare")
-	w.Write([]byte("OK"))
+	c.requestsChan <- StateRequest{Type: RequestResetAlarm}
+	fmt.Println("INFO: Inviato comando di reset allarme.")
+	w.WriteHeader(http.StatusOK)
 }
 
 // --- Implementazione Mock (MockController) ---
