@@ -31,20 +31,29 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 	const t2 float64 = 70.0
 	const normalFreq time.Duration = 500 * time.Millisecond
 	const fastFreq time.Duration = 100 * time.Millisecond
-	const historySize = 100 // Manteniamo le ultime 100 letture
+	const historySize = 100
+	// Definiamo un timeout. Se non riceviamo dati per più di 2 secondi, l'ESP32 è offline.
+	const esp32Timeout = 2 * time.Second
 
 	state := SystemState{
 		SystemStatus:     "NORMAL",
 		SamplingInterval: normalFreq,
 		OperativeMode:    "AUTOMATIC",
-		MinTemp:          math.Inf(1),  // Inizializza min a +infinito
-		MaxTemp:          math.Inf(-1), // Inizializza max a -infinito
+		MinTemp:          math.Inf(1),
+		MaxTemp:          math.Inf(-1),
+		// Inizializziamo la mappa dei dispositivi. Il server è sempre online.
+		DevicesOnline: map[string]bool{
+			"server":  true,
+			"esp32":   false, // Parte come offline finché non riceve il primo messaggio
+			"arduino": false, // Placeholder, non gestito
+		},
 	}
 	var tempHistory []float64
 
-	// Invia subito la frequenza iniziale al publisher
-	intervalUpdatesChan <- state.SamplingInterval
+	// Timer per controllare la connessione dell'ESP32
+	esp32Timer := time.NewTimer(esp32Timeout)
 
+	intervalUpdatesChan <- state.SamplingInterval
 	fmt.Println("INFO: State Manager avviato.")
 
 	for {
@@ -53,13 +62,22 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 			req.ReplyChan <- state
 
 		case temp := <-tempUpdatesChan:
-			// Aggiorna la cronologia delle temperature
+			// Se riceviamo un messaggio, l'ESP32 è online.
+			if !state.DevicesOnline["esp32"] {
+				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
+				state.DevicesOnline["esp32"] = true
+			}
+			// Resettiamo il timer di timeout.
+			if !esp32Timer.Stop() {
+				<-esp32Timer.C
+			}
+			esp32Timer.Reset(esp32Timeout)
+
+			// ... (tutta la logica di calcolo delle statistiche rimane invariata) ...
 			tempHistory = append(tempHistory, temp)
 			if len(tempHistory) > historySize {
-				tempHistory = tempHistory[1:] // Mantiene la dimensione della cronologia
+				tempHistory = tempHistory[1:]
 			}
-
-			// Ricalcola le statistiche
 			var sum float64
 			min := math.Inf(1)
 			max := math.Inf(-1)
@@ -72,17 +90,14 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 					max = t
 				}
 			}
-
-			// Aggiorna lo stato
 			state.CurrentTemp = temp
 			state.AverageTemp = sum / float64(len(tempHistory))
 			state.MinTemp = min
 			state.MaxTemp = max
 
-			// Logica di stato basata sulla temperatura corrente
+			// ... (tutta la logica di cambio stato NORMAL/HOT/ALARM rimane invariata) ...
 			var newState string
 			var newFreq time.Duration
-
 			if temp <= t1 {
 				newState = "NORMAL"
 				newFreq = normalFreq
@@ -93,17 +108,24 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 				newState = "ALARM"
 				newFreq = fastFreq
 			}
-
 			if newState != state.SystemStatus {
 				log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", newState, temp)
 				state.SystemStatus = newState
 			}
-
 			if newFreq != state.SamplingInterval {
 				log.Printf("INFO: Frequenza di campionamento cambiata a %v", newFreq)
 				state.SamplingInterval = newFreq
 				intervalUpdatesChan <- state.SamplingInterval
 			}
+
+		// Se il timer scade, l'ESP32 è andato offline.
+		case <-esp32Timer.C:
+			if state.DevicesOnline["esp32"] {
+				log.Println("ATTENZIONE: Dispositivo ESP32 è andato OFFLINE (timeout).")
+				state.DevicesOnline["esp32"] = false
+			}
+			// Facciamo ripartire il timer per il prossimo controllo
+			esp32Timer.Reset(esp32Timeout)
 		}
 	}
 }
