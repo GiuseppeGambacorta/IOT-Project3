@@ -24,11 +24,11 @@ type SystemState struct {
 type RequestType int
 
 const (
-	RequestReadState   RequestType = iota // 0 - Richiesta di lettura
-	RequestToggleMode                     // 1 - Comando per cambiare modalità
-	RequestOpenWindow                     // 2 - Comando per aprire la finestra
-	RequestCloseWindow                    // 3 - Comando per chiudere la finestra
-	RequestResetAlarm                     // 4 - Comando per resettare l'allarme
+	RequestReadState RequestType = iota
+	RequestToggleMode
+	RequestOpenWindow
+	RequestCloseWindow
+	RequestResetAlarm
 )
 
 type StateRequest struct {

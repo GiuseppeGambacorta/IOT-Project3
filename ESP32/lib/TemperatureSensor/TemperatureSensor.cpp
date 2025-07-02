@@ -4,9 +4,9 @@
 #define MAXTEMP 100
 #define TEMPOFFSET 55
 
-TemperatureSensor::TemperatureSensor(int pin) {
+TemperatureSensor::TemperatureSensor(unsigned int pin, unsigned int maxRange,unsigned int mapRange, int offset) {
     this->temperature = 0;
-    this->sensor = new AnalogInput(pin, 206);
+    this->sensor = new AnalogInput(pin, maxRange, mapRange, offset);
 }
 
 void TemperatureSensor::update() {

@@ -79,7 +79,9 @@ public:
 class AnalogInput {
 private:
     unsigned int pin;
+    unsigned int maxRange;
     unsigned int mapValue;
+    int offset;
     float value = 0;
     static const unsigned int maxFilterSize = 10;
     int array[maxFilterSize] = {0};
@@ -90,7 +92,7 @@ private:
     IInputKeeper& inputKeeper = ServiceLocator::getInputKeeperInstance();
 
 public:
-    AnalogInput(unsigned int pin, unsigned int mapValue);
+    AnalogInput(unsigned int pin, unsigned int maxRange, unsigned int mapValue, int offset);
     void update();
     int getValue();
 };

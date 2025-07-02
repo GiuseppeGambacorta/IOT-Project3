@@ -18,9 +18,9 @@ const char* temp_topic = "esp32/data/temperature";
 // Oggetti globali
 WiFiClient espClient;
 PubSubClient client(espClient);
-TemperatureSensor tempSensor(A2);
-DigitalOutput Redled(17);   // Pin per il LED rosso (problema di connessione)
-DigitalOutput Greenled(16); // Pin per il LED verde (connessione OK)
+TemperatureSensor tempSensor(18,4095 , 100, 55);
+DigitalOutput Redled(17);   
+DigitalOutput Greenled(16); 
 
 // Variabili condivise e Mutex per la protezione
 volatile float currentTemperature = 0.0;

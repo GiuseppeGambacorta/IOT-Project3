@@ -35,6 +35,12 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 	const historySize = 100
 	const esp32Timeout = 2 * time.Second
 
+	var resetAlarm = false
+	var inAlarm = false
+
+	var newState string
+	var newFreq time.Duration
+
 	state := SystemState{
 		SystemStatus:     "NORMAL",
 		SamplingInterval: normalFreq,
@@ -79,10 +85,8 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 				// Qui andrà la logica per comandare l'attuatore (es. via MQTT)
 				log.Println("COMANDO: Chiusura finestra (logica da implementare).")
 			case RequestResetAlarm:
-				if state.SystemStatus == "ALARM" {
-					state.SystemStatus = "NORMAL" // O 'HOT-STATE' se la temp è ancora alta
-					log.Println("INFO: Allarme resettato manualmente.")
-				}
+				resetAlarm = true
+
 			}
 
 		case temp := <-tempUpdatesChan:
@@ -117,18 +121,28 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 			state.AverageTemp = sum / float64(len(tempHistory))
 			state.MinTemp = min
 			state.MaxTemp = max
-			var newState string
-			var newFreq time.Duration
-			if temp <= t1 {
-				newState = "NORMAL"
-				newFreq = normalFreq
-			} else if temp > t1 && temp <= t2 {
-				newState = "HOT-STATE"
-				newFreq = fastFreq
-			} else {
-				newState = "ALARM"
-				newFreq = fastFreq
+
+			if resetAlarm {
+				resetAlarm = false
+				if temp <= t2 {
+					inAlarm = false
+				}
 			}
+
+			if !inAlarm {
+				if temp <= t1 {
+					newState = "NORMAL"
+					newFreq = normalFreq
+				} else if temp > t1 && temp <= t2 {
+					newState = "HOT-STATE"
+					newFreq = fastFreq
+				} else {
+					newState = "ALARM"
+					newFreq = fastFreq
+					inAlarm = true
+				}
+			}
+
 			if newState != state.SystemStatus {
 				log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", newState, temp)
 				state.SystemStatus = newState

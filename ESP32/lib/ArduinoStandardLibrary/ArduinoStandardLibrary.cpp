@@ -111,7 +111,7 @@ bool DigitalOutput::isActive() {
 
 /* ---- ANALOG INPUT ---- */
 
-AnalogInput::AnalogInput(unsigned int pin, unsigned int mapValue) : pin(pin), mapValue(mapValue) {
+AnalogInput::AnalogInput(unsigned int pin, unsigned int maxRange, unsigned int mapValue, int offset) : pin(pin), maxRange(maxRange), mapValue(mapValue), offset(offset) {
     pinMode(pin, INPUT);
 }
 
@@ -133,7 +133,7 @@ float AnalogInput::filterValue(unsigned int inputValue) {
 
 void AnalogInput::update() {
     int actualValue = this->inputKeeper.getAnalogPinValue(this->pin);
-    this->value = this->filterValue(map(actualValue, 0, 1023, 0, this->mapValue));
+    this->value = this->filterValue(map(actualValue, 0, maxRange, 0, this->mapValue)+offset);
 }
 
 int AnalogInput::getValue() {
