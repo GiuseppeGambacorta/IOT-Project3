@@ -22,22 +22,42 @@ TemperatureSensor tempSensor(A2);
 DigitalOutput Redled(17);   // Pin per il LED rosso (problema di connessione)
 DigitalOutput Greenled(16); // Pin per il LED verde (connessione OK)
 
+// Variabili condivise e Mutex per la protezione
+volatile float currentTemperature = 0.0;
+volatile long publishInterval = 0; // Intervallo in ms. Se 0, non si pubblica.
+SemaphoreHandle_t dataMutex;
+
 // Dichiarazioni Funzioni e Task
 void ledManagerTask(void *pvParameters);
-void mqttTask(void *pvParameters);
+void readTempTask(void *pvParameters);
+void publishMqttTask(void *pvParameters);
 
 // Funzione di callback per i messaggi MQTT in arrivo
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Messaggio arrivato sul topic: ");
   Serial.println(topic);
-  // Qui andrà la logica per gestire il messaggio
+
+  char message[length + 1];
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  if (strcmp(topic, config_topic) == 0) {
+    long newInterval = atol(message); // Converte la stringa in un numero
+    if (newInterval > 0) {
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      publishInterval = newInterval;
+      xSemaphoreGive(dataMutex);
+      Serial.print("Nuovo intervallo di pubblicazione impostato a: ");
+      Serial.print(publishInterval);
+      Serial.println(" ms");
+    }
+  }
 }
 
 // Funzione per la riconnessione a MQTT
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Tentativo di connessione MQTT...");
-    // "ESP32Client" è l'ID del client. Va benissimo.
     if (client.connect("ESP32Client")) {
       Serial.println("connesso");
       client.subscribe(config_topic);
@@ -47,16 +67,16 @@ void reconnect() {
       Serial.print("fallito, rc=");
       Serial.print(client.state());
       Serial.println(" riprovo tra 5 secondi");
-      // Usa vTaskDelay invece di delay in un task
-      vTaskDelay(pdMS_TO_TICKS(5000)); 
+      vTaskDelay(pdMS_TO_TICKS(1000)); 
     }
   }
 }
 
 void setup() {
   Serial.begin(115200);
-  // Rimuovi while(!Serial); per ESP32-S3 con le build flags
   
+  dataMutex = xSemaphoreCreateMutex(); // Inizializza il mutex
+
   // Connessione al WiFi
   Serial.println();
   Serial.print("Connessione a ");
@@ -74,26 +94,75 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 
-  // Creazione dei task
+  // Creazione dei task su core specifici per bilanciare il carico
   xTaskCreatePinnedToCore(ledManagerTask, "LedManager", 2048, NULL, 2, NULL, 1);
-  xTaskCreatePinnedToCore(mqttTask, "MqttTask", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(readTempTask, "ReadTemp", 2048, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(publishMqttTask, "PublishMQTT", 4096, NULL, 1, NULL, 1);
 }
 
-// Task per la gestione di connessione e messaggi MQTT
-void mqttTask(void *pvParameters) {
-  while(true) {
-    if (!client.connected()) {
-      reconnect();
+// Task per la lettura della temperatura (Core 0)
+void readTempTask(void *pvParameters) {
+  while (true) {
+    long localInterval;
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    localInterval = publishInterval;
+    xSemaphoreGive(dataMutex);
+
+    if (localInterval > 0) {
+      tempSensor.update();
+      float temp = tempSensor.readTemperature();
+      
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      currentTemperature = temp;
+      xSemaphoreGive(dataMutex);
+      
+      vTaskDelay(pdMS_TO_TICKS(localInterval));
+    } else {
+      // Se l'intervallo non è impostato, controlla di nuovo tra 1 secondo
+      vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    client.loop(); // Fondamentale per ricevere messaggi e mantenere la connessione
-    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
-// Task per la gestione dei LED di stato
+// Task per la gestione MQTT e la pubblicazione (Core 1)
+void publishMqttTask(void *pvParameters) {
+  while (true) {
+    if (!client.connected()) {
+      reconnect();
+    }
+    client.loop(); // Gestisce i messaggi in arrivo (es. la callback)
+
+    long localInterval;
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
+    localInterval = publishInterval;
+    xSemaphoreGive(dataMutex);
+
+    if (localInterval > 0) {
+      float tempToPublish;
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      tempToPublish = currentTemperature;
+      xSemaphoreGive(dataMutex);
+
+      char tempString[8];
+      dtostrf(tempToPublish, 4, 2, tempString);
+      
+      Serial.print("Invio temperatura: ");
+      Serial.print(tempString);
+      Serial.print(" al topic: ");
+      Serial.println(temp_topic);
+
+      client.publish(temp_topic, tempString);
+      vTaskDelay(pdMS_TO_TICKS(localInterval));
+    } else {
+      // Se l'intervallo non è impostato, fai una piccola pausa
+      vTaskDelay(pdMS_TO_TICKS(200));
+    }
+  }
+}
+
+// Task per la gestione dei LED di stato (Core 1)
 void ledManagerTask(void *pvParameters) {
   while (true) {
-    // Ora controlla sia WiFi che MQTT per uno stato completo
     if (WiFi.status() != WL_CONNECTED || !client.connected()) {
       Redled.turnOn();
       Greenled.turnOff();
