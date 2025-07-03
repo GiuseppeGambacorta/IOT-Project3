@@ -8,24 +8,23 @@
 class InputTask : public Task
 {
 private:
-    TemperatureSensor &tempSensor;
+    AnalogInput &potentiometer;
     DigitalInput &manualButton;
     int isButtonPressed = 0;
 
 public:
     InputTask(
-        TemperatureSensor &tempSensor,
+        AnalogInput &potentiometer,
         DigitalInput &manualButton)
         :
-
-          tempSensor(tempSensor),
+          potentiometer(potentiometer),
           manualButton(manualButton)
     {
         ServiceLocator::getSerialManagerInstance().addVariableToSend((byte *)&isButtonPressed, VarType::INT);
     }
     void tick() override
     {
-        tempSensor.update();
+        potentiometer.update();
         manualButton.update();
         isButtonPressed = manualButton.isActive();
     }
