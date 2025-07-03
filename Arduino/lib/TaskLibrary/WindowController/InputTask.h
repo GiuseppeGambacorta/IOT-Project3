@@ -10,6 +10,7 @@ class InputTask : public Task
 private:
     TemperatureSensor &tempSensor;
     DigitalInput &manualButton;
+    int isButtonPressed = 0;
 
 public:
     InputTask(
@@ -20,13 +21,13 @@ public:
           tempSensor(tempSensor),
           manualButton(manualButton)
     {
-        // ServiceLocator::getSerialManagerInstance().addVariableToSend((byte *)&temp, VarType::INT);
-        // ServiceLocator::getSerialManagerInstance().addVariableToSend((byte *)&level, VarType::FLOAT);
+        ServiceLocator::getSerialManagerInstance().addVariableToSend((byte *)&isButtonPressed, VarType::INT);
     }
     void tick() override
     {
         tempSensor.update();
         manualButton.update();
+        isButtonPressed = manualButton.isActive();
     }
     void reset() override
     {

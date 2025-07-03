@@ -176,7 +176,8 @@ void Protocol::sendinitCommunicationData()
 
 void Protocol::sendVariables()
 {
-    for (unsigned int i = 0; i < internalRegister.getVariableCount(); i++)
+    int numberOfVariables = internalRegister.getVariableCount();
+    for (unsigned int i = 0; i < numberOfVariables; i++)
     {
         DataHeader *header = internalRegister.getVariableHeader(i);
 
