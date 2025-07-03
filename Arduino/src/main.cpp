@@ -37,7 +37,7 @@ void setup()
 
   serialoutputTask.init(250);
   serialinputTask.init(500);
-  inputTask.init(50);
+  inputTask.init(100);
   windowController.init(100);
   outputTask.init(100);
 
@@ -56,7 +56,7 @@ void setup()
 
 void loop()
 {
-  motor.setPosition(50);
-  motor.update();
-  //scheduler.schedule();
+ // display.write("System running");
+ // display.update();
+  scheduler.schedule();
 }

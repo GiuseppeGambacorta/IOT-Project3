@@ -18,7 +18,7 @@ WindowControllerTask::WindowControllerTask(
 void WindowControllerTask::tick()
 {
 
-    if (*actualMode == 1)
+    if (manualButton.isActive() == 1)
     {
         state = WindowManagerState::MANUAL;
     }
@@ -27,10 +27,11 @@ void WindowControllerTask::tick()
         state = WindowManagerState::AUTOMATIC;
     }
 
-    display.on();
-    display.clear();
-    display.write(("Window Position: " + String(motor.getPosition())).c_str());
-    switch (state)
+   
+   // display.clear();
+   //display.write(("Window Position: " + String(motor.getPosition())).c_str());
+   display.write("ciao"); 
+   switch (state)
     {
     case AUTOMATIC:
         motor.setPosition(50);
@@ -40,7 +41,8 @@ void WindowControllerTask::tick()
     case MANUAL:
         motor.setPosition(potentiometer.getValue());
         display.write("Manual mode");
-        display.write(("Temperature: " + String(*temperature)).c_str());
+    
+       // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
         break;

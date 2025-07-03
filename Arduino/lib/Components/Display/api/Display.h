@@ -10,6 +10,7 @@ private:
     const char* oldMessage;
     int columns;
     int rows;
+    int actualRow;
 
 public:
     Display(int address, int columns, int rows);
