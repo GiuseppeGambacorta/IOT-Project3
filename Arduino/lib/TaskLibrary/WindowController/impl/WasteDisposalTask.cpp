@@ -34,12 +34,12 @@ void WindowControllerTask::tick()
    switch (state)
     {
     case AUTOMATIC:
-        motor.setPosition(50);
+        motor.setPosition(90);
         display.write("Automatic mode");
         break;
 
     case MANUAL:
-        motor.setPosition(potentiometer.getValue());
+        motor.setPosition(67);
         display.write("Manual mode");
     
        // display.write(("Temperature: " + String(*temperature)).c_str());
