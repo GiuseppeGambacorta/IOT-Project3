@@ -7,8 +7,8 @@
 #include "Components.h"
 #include "Tasks.h"
 
-AnalogInput potentiomenter = AnalogInput(A2, 206, 1023, 0); // A2 pin, max range 206, map range 1023, offset 0
-DigitalInput manualButton = DigitalInput(2, 250);
+AnalogInput potentiomenter = AnalogInput(A2, 90, 1023, 0); // A2 pin, max range 206, map range 1023, offset 0
+DigitalInput manualButton = DigitalInput(4, 250);
 
 Motor motor = Motor(3, 0, 90, 0);
 Display display = Display(0x27, 16, 2);
@@ -56,5 +56,7 @@ void setup()
 
 void loop()
 {
-  scheduler.schedule();
+  motor.setPosition(50);
+  motor.update();
+  //scheduler.schedule();
 }

@@ -1,6 +1,5 @@
 #include "../api/WindowControllerTask.h"
 
-
 WindowControllerTask::WindowControllerTask(
     AnalogInput &potentiometer,
     DigitalInput &manualButton,
@@ -18,73 +17,36 @@ WindowControllerTask::WindowControllerTask(
 }
 void WindowControllerTask::tick()
 {
-    double level = levelDetector.readDistance();
-    int temp = tempSensor.readTemperature();
-    tempTimer.active(temp >= maxTemp);
 
+    if (*actualMode == 1)
+    {
+        state = WindowManagerState::MANUAL;
+    }
+    else
+    {
+        state = WindowManagerState::AUTOMATIC;
+    }
+
+    display.on();
+    display.clear();
+    display.write(("Window Position: " + String(motor.getPosition())).c_str());
     switch (state)
     {
-    case STD_EXEC:
-
-        if (level <= maxLevel)
-        {
-            state = WasteDisposalState::LVL_ALLARM;
-        }
-
-        if (tempTimer.isTimeElapsed())
-        {
-            state = WasteDisposalState::TEMP_ALLARM;
-        }
+    case AUTOMATIC:
+        motor.setPosition(50);
+        display.write("Automatic mode");
         break;
-    case LVL_ALLARM:
-        if (*empty == ResetMessage::MESSAGE_SEEN)
-        {
-            state = WasteDisposalState::STD_EXEC;
-            *empty = ResetMessage::NO_MESSAGE;
-        }
 
-        if (tempTimer.isTimeElapsed())
-        {
-            state = WasteDisposalState::TEMP_ALLARM;
-        }
+    case MANUAL:
+        motor.setPosition(potentiometer.getValue());
+        display.write("Manual mode");
+        display.write(("Temperature: " + String(*temperature)).c_str());
         break;
-    case TEMP_ALLARM:
-
-        if (*fire == ResetMessage::MESSAGE_SEEN)
-        {
-            state = WasteDisposalState::STD_EXEC;
-            *fire = ResetMessage::NO_MESSAGE;
-            ;
-        }
-    }
-
-    switch (state)
-    {
-    case STD_EXEC:
-        stdExecTask.setActive(true);
-        alarmLevelTask.setActive(false);
-        alarmTempTask.setActive(false);
-        break;
-    case LVL_ALLARM:
-        stdExecTask.setActive(false);
-        alarmLevelTask.setActive(true);
-        alarmTempTask.setActive(false);
-        break;
-    case TEMP_ALLARM:
-        stdExecTask.setActive(false);
-        alarmLevelTask.setActive(false);
-        alarmTempTask.setActive(true);
+    default:
         break;
     }
-
-    if (state != oldState)
-    {
-        ServiceLocator::getSerialManagerInstance().addEventMessage(wasteDisposalStateToString(state));
-    }
-    oldState = state;
 }
 
 void WindowControllerTask::reset()
 {
-    
 }
