@@ -265,7 +265,7 @@ void Protocol::getData()
                 int *var = internalRegister.getIncomingDataHeader(int(id));
                 if (var != nullptr)
                 {
-                    *var = (int(buffer[0]) << 8) | int(buffer[1]); //for now only int are supported
+                    *var = (int(buffer[1]) << 8) | int(buffer[0]); //for now only int are supported
                 }
             }
         }

@@ -54,6 +54,10 @@ void WindowControllerTask::tick()
     display.write("No Mode");
         break;
     }
+
+    if (!*actualMode){
+        display.write("arrivato 0");
+    }
    
 }
 

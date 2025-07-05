@@ -36,7 +36,7 @@ void setup()
   scheduler.init(50);
 
   serialoutputTask.init(250);
-  serialinputTask.init(500);
+  serialinputTask.init(250);
   inputTask.init(100);
   windowController.init(100);
   outputTask.init(100);

@@ -16,7 +16,7 @@ const (
 
 func main() {
 	// Crea un nuovo reader con baudrate 9600 e timeout di 1 secondo.
-	arduino := NewArduinoReader(9600, 1*time.Second)
+	arduino := NewArduinoReader(9600, 5*time.Second)
 	var actualState WindowManagerState = AUTOMATIC
 	var oldbuttonState bool
 	// Connettiti ad Arduino.
@@ -31,12 +31,12 @@ func main() {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
 			fmt.Printf("Errore durante la lettura dei dati: %v\n", err)
-			continue
+			//continue
 		}
 
 		if len(vars) < 2 {
 			fmt.Println("Nessuna variabile ricevuta.")
-			continue
+			//continue
 		}
 
 		var isButtonPressed = vars[0].Data.(int16) == 1
@@ -63,7 +63,7 @@ func main() {
 		fmt.Printf("Stato attuale: %v, Posizione finestra: %d\n", actualState, windowPosition)
 
 		// Attendi un po' prima della prossima lettura.
-		//time.Sleep(500 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 		arduino.WriteData(50, 0)
 		arduino.WriteData(int16(actualState), 1)
 	}

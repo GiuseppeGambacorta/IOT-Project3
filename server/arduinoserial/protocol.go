@@ -158,12 +158,12 @@ func (p *Protocol) WriteData(value int16, id byte) error {
 
 	// Converte il valore in byte
 	valueBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(valueBytes, uint16(value))
+	binary.LittleEndian.PutUint16(valueBytes, uint16(value))
 
 	// Costruisce il pacchetto completo
 	packet := append(header, id, size)
 	packet = append(packet, valueBytes...)
-
+	fmt.Printf("DEBUG: Inviando pacchetto: %v\n", valueBytes)
 	_, err := p.conn.Write(packet)
 	return err
 }
