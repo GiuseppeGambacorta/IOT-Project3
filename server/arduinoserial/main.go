@@ -66,7 +66,7 @@ func main() {
 
 		// Attendi un po' prima della prossima lettura.
 		time.Sleep(250 * time.Millisecond)
-		arduino.WriteData(50, 1)
+		arduino.WriteData(50, 2)
 		arduino.WriteData(int16(actualState), 0)
 	}
 }
