@@ -21,8 +21,8 @@ void WindowControllerTask::tick()
 {
 
     manualButtonPressed = manualButton.isActive();
-    actualWindowPosition = motor.getPosition();
-
+    actualWindowPosition = 53;
+   
    
    // display.clear();
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
