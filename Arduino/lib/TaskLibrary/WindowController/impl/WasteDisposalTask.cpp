@@ -19,15 +19,24 @@ WindowControllerTask::WindowControllerTask(
 }
 void WindowControllerTask::tick()
 {
+    state = (WindowManagerState) *actualMode;
+    buttonTrigger.update(manualButton.isActive());
 
-    manualButtonPressed = manualButton.isActive();
-    actualWindowPosition = *actualMode;
+    if (buttonTrigger.isActive()){
+        oldState = state;
+        manualButtonPressed = 1;
+    } 
+
+    if (state != oldState){
+        manualButtonPressed = 0;
+    }
+    
+    actualWindowPosition = state;
    
    
-   // display.clear();
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
    display.write("ciao"); 
-   //state = (WindowManagerState) *actualMode;
+  
    switch (state)
     {
     case AUTOMATIC:
@@ -45,6 +54,7 @@ void WindowControllerTask::tick()
     display.write("No Mode");
         break;
     }
+   
 }
 
 void WindowControllerTask::reset()

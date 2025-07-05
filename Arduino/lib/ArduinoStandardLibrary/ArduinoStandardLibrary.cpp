@@ -167,11 +167,11 @@ void AnalogOutput::update() {
 
 void RTrig::update(unsigned int condition) {
     
-    if (output){
+    if (interlock){
         output = 0;
     }
 
-    if (!condition) {
+    if (!condition && interlock) {
         interlock = 0;
         output = 0;
     }

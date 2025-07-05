@@ -17,7 +17,8 @@ class WindowControllerTask : public Task {
 
 private:
 
-    WindowManagerState state;
+    WindowManagerState state = AUTOMATIC;
+    WindowManagerState oldState = AUTOMATIC;
     AnalogInput& potentiometer;
     DigitalInput& manualButton;
     Motor& motor;
