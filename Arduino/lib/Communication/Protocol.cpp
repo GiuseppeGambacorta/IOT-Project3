@@ -257,8 +257,6 @@ void Protocol::getData()
             byte command = Serial.read();
             if (command == 0)
             {
-                Serial.read(); // reading and ignoring var_type to disable the warning
-                Serial.read(); // reading and ignoring id to disable the warning
 
                 byte id = Serial.read();
                 byte size = Serial.read();

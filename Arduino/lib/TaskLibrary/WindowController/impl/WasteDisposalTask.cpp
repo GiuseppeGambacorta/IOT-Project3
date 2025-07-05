@@ -21,7 +21,7 @@ void WindowControllerTask::tick()
 {
 
     manualButtonPressed = manualButton.isActive();
-    actualWindowPosition = 53;
+    actualWindowPosition = *actualMode;
    
    
    // display.clear();
