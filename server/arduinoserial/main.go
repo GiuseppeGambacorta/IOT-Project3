@@ -34,13 +34,14 @@ func main() {
 			//continue
 		}
 
-		if len(vars) < 2 {
+		if len(vars) < 3 {
 			fmt.Println("Nessuna variabile ricevuta.")
 			//continue
 		}
 
 		var isButtonPressed = vars[0].Data.(int16) == 1
 		var windowPosition = vars[1].Data.(int16)
+		var statochearriva = vars[2].Data.(int16)
 
 		if !isButtonPressed {
 			oldbuttonState = false
@@ -61,10 +62,11 @@ func main() {
 		}
 
 		fmt.Printf("Stato attuale: %v, Posizione finestra: %d\n", actualState, windowPosition)
+		fmt.Printf("Stato che arriva: %d\n", statochearriva)
 
 		// Attendi un po' prima della prossima lettura.
 		time.Sleep(250 * time.Millisecond)
-		arduino.WriteData(50, 0)
-		arduino.WriteData(int16(actualState), 1)
+		arduino.WriteData(50, 1)
+		arduino.WriteData(int16(actualState), 0)
 	}
 }

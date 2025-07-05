@@ -39,7 +39,7 @@ private:
     DataHeader eventMessage[MAX_EVENTS];
     unsigned int eventCount = 0;
 
-    static const int NUMBER_OF_INCOMING_DATA = 2;
+    static const int NUMBER_OF_INCOMING_DATA = 3;
     int datiInArrivo[NUMBER_OF_INCOMING_DATA]; //for now only int are supported
 
 public:

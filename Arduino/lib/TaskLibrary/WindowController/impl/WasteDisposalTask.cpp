@@ -12,10 +12,11 @@ WindowControllerTask::WindowControllerTask(
       state(WindowManagerState::AUTOMATIC)
 {
 
-    temperature = serialManager.getvar(0);
-    actualMode = serialManager.getvar(1);
+    temperature = serialManager.getvar(1);
+    actualMode = serialManager.getvar(0);
     serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
     serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
+    serialManager.addVariableToSend((byte *)&state, VarType::INT);
 }
 void WindowControllerTask::tick()
 {
@@ -31,7 +32,7 @@ void WindowControllerTask::tick()
         manualButtonPressed = 0;
     }
     
-    actualWindowPosition = state;
+    actualWindowPosition = *temperature;
    
    
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
@@ -51,12 +52,8 @@ void WindowControllerTask::tick()
        // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
-    display.write("No Mode");
+        display.write("No Mode");
         break;
-    }
-
-    if (!*actualMode){
-        display.write("arrivato 0");
     }
    
 }
