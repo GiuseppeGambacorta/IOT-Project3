@@ -27,7 +27,7 @@ void WindowControllerTask::tick()
    // display.clear();
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
    display.write("ciao"); 
-   state = (WindowManagerState) *actualMode;
+   //state = (WindowManagerState) *actualMode;
    switch (state)
     {
     case AUTOMATIC:

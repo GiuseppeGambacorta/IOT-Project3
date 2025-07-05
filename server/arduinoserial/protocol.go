@@ -154,9 +154,6 @@ func (p *Protocol) WriteData(value int16, id byte) error {
 	// Header di inizio comunicazione
 	header := []byte{255, 0}
 
-	// Dati del messaggio
-	messageType := byte(Var)
-	varType := byte(Int)
 	size := byte(2) // int16 occupa 2 byte
 
 	// Converte il valore in byte
@@ -164,7 +161,7 @@ func (p *Protocol) WriteData(value int16, id byte) error {
 	binary.BigEndian.PutUint16(valueBytes, uint16(value))
 
 	// Costruisce il pacchetto completo
-	packet := append(header, messageType, varType, id, size)
+	packet := append(header, id, size)
 	packet = append(packet, valueBytes...)
 
 	_, err := p.conn.Write(packet)
