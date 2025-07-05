@@ -38,8 +38,8 @@ func main() {
 		}
 
 		// Attendi un po' prima della prossima lettura.
-		time.Sleep(500 * time.Millisecond)
-		arduino.WriteData(50, 0)
-		arduino.WriteData(1, 1)
+		//time.Sleep(500 * time.Millisecond)
+		//arduino.WriteData(50, 0)
+		//arduino.WriteData(1, 1)
 	}
 }
