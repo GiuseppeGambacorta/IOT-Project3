@@ -12,39 +12,37 @@ WindowControllerTask::WindowControllerTask(
       state(WindowManagerState::AUTOMATIC)
 {
 
-    temperature = ServiceLocator::getSerialManagerInstance().getvar(0);
-    actualMode = ServiceLocator::getSerialManagerInstance().getvar(1);
+    temperature = serialManager.getvar(0);
+    actualMode = serialManager.getvar(1);
+    serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
+    serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
 }
 void WindowControllerTask::tick()
 {
 
-    if (manualButton.isActive() == 1)
-    {
-        state = WindowManagerState::MANUAL;
-    }
-    else
-    {
-        state = WindowManagerState::AUTOMATIC;
-    }
+    manualButtonPressed = manualButton.isActive();
+    actualWindowPosition = motor.getPosition();
 
    
    // display.clear();
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
    display.write("ciao"); 
+   state = (WindowManagerState) *actualMode;
    switch (state)
     {
     case AUTOMATIC:
-        motor.setPosition(90);
+        motor.setPosition(*temperature);
         display.write("Automatic mode");
         break;
 
     case MANUAL:
-        motor.setPosition(67);
+        motor.setPosition(*temperature-10);
         display.write("Manual mode");
     
        // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
+    display.write("No Mode");
         break;
     }
 }

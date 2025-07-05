@@ -112,3 +112,16 @@ public:
     int getValue();
     void update();
 };
+
+
+
+/* ---- RISING TRIG ---- */
+
+class RTrig {
+private:
+    int interlock;
+    int output;
+public:
+    void update(unsigned int condition);
+    bool isActive();
+};

@@ -8,9 +8,9 @@
 
 
 
-enum WindowManagerState {
-    AUTOMATIC,
-    MANUAL
+enum WindowManagerState : byte {
+    AUTOMATIC = 0,
+    MANUAL = 1
 };
 
 class WindowControllerTask : public Task {
@@ -23,8 +23,14 @@ private:
     Motor& motor;
     Display& display;
 
+    SerialManager &serialManager = ServiceLocator::getSerialManagerInstance();
+    RTrig buttonTrigger;
+
     int *temperature;
     int *actualMode;
+
+    int manualButtonPressed;
+    int actualWindowPosition;
     
 public:
     WindowControllerTask(

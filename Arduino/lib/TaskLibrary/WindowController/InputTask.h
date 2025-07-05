@@ -10,7 +10,6 @@ class InputTask : public Task
 private:
     AnalogInput &potentiometer;
     DigitalInput &manualButton;
-    int isButtonPressed = 0;
 
 public:
     InputTask(
@@ -20,13 +19,12 @@ public:
           potentiometer(potentiometer),
           manualButton(manualButton)
     {
-        ServiceLocator::getSerialManagerInstance().addVariableToSend((byte *)&isButtonPressed, VarType::INT);
+        
     }
     void tick() override
     {
         potentiometer.update();
         manualButton.update();
-        isButtonPressed = manualButton.isActive();
     }
     void reset() override
     {

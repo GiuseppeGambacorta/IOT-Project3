@@ -161,3 +161,27 @@ int AnalogOutput::getValue() {
 void AnalogOutput::update() {
     analogWrite(this->pin, map(this->value, 0, this->maxValue, 0, 255));
 }
+
+
+/* --- RISING TRIG*/
+
+void RTrig::update(unsigned int condition) {
+    
+    if (output){
+        output = 0;
+    }
+
+    if (!condition) {
+        interlock = 0;
+        output = 0;
+    }
+    
+    if (!interlock && condition ){
+        interlock = 1;
+        output = 1;
+    }
+}
+
+bool RTrig::isActive() {
+    return output;
+}
