@@ -62,8 +62,10 @@ func main() {
 		fmt.Printf("Stato attuale: %v, Posizione finestra: %d\n", actualState, windowPosition)
 		fmt.Printf("Stato che arriva: %d\n", statochearriva)
 
-		time.Sleep(250 * time.Millisecond)
-		arduino.WriteData(50, 2)
-		arduino.WriteData(int16(actualState), 0)
+		//time.Sleep(250 * time.Millisecond)
+		arduino.addDataToSend(0, 50)
+		arduino.addDataToSend(1, int16(actualState))
+		arduino.addDataToSend(2, windowPosition)
+		arduino.WriteData()
 	}
 }

@@ -34,7 +34,7 @@ func (ar *ArduinoReader) findArduinoPort() (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("nessuna porta seriale trovata")
 	}
-	return ports[0], nil
+	return ports[1], nil
 }
 
 func (ar *ArduinoReader) Connect() error {
@@ -107,9 +107,17 @@ func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, e
 	return ar.Variables, ar.Debugs, ar.Events, nil
 }
 
-func (ar *ArduinoReader) WriteData(value int16, id byte) error {
+func (ar *ArduinoReader) addDataToSend(id byte, value int16) {
+	if ar.protocol == nil {
+		fmt.Println("Protocollo non inizializzato, impossibile aggiungere dati.")
+		return
+	}
+	ar.protocol.AddVariableToSend(id, value)
+}
+
+func (ar *ArduinoReader) WriteData() error {
 	if ar.conn == nil {
 		return fmt.Errorf("connessione seriale non aperta")
 	}
-	return ar.protocol.WriteData(value, id)
+	return ar.protocol.SendBuffer()
 }

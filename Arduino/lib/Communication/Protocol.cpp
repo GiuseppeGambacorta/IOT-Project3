@@ -255,17 +255,25 @@ void Protocol::getData()
         if (header == 255)
         {
             byte command = Serial.read();
-            if (command == 0)
+            if (command == 0) // Comando per l'aggiornamento delle variabili
             {
+                // Legge quante variabili sono state inviate in questo pacchetto
+                byte numberOfVariables = Serial.read();
 
-                byte id = Serial.read();
-                byte size = Serial.read();
-                byte buffer[size];
-                Serial.readBytes(buffer, size);
-                int *var = internalRegister.getIncomingDataHeader(int(id));
-                if (var != nullptr)
+                // Esegue un ciclo per leggere ogni variabile inviata
+                for (int i = 0; i < numberOfVariables; i++)
                 {
-                    *var = (int(buffer[1]) << 8) | int(buffer[0]); //for now only int are supported
+                    byte id = Serial.read();
+                    byte size = Serial.read();
+                    byte buffer[size];
+                    Serial.readBytes(buffer, size);
+                    
+                    int *var = internalRegister.getIncomingDataHeader(int(id));
+                    if (var != nullptr)
+                    {
+                        // Ricostruisce l'intero in formato Little-Endian
+                        *var = (int(buffer[1]) << 8) | int(buffer[0]);
+                    }
                 }
             }
         }

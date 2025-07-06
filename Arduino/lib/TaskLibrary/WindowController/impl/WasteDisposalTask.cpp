@@ -53,16 +53,11 @@ void WindowControllerTask::tick()
        // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
-    if (*windowcommand == 1){
-        display.write("Window Opened");
-    } else if (*windowcommand == 0){
-        display.write("Window Closed");
-    } else {
-        display.write("Window Command Error");
-    }
+  
         
         break;
     }
+
    
 }
 
