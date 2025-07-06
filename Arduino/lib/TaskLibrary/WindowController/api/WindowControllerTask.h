@@ -29,6 +29,7 @@ private:
 
     int *temperature;
     int *actualMode;
+    int *windowcommand;
 
     int manualButtonPressed;
     int actualWindowPosition;

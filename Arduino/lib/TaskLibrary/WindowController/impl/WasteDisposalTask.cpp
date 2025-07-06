@@ -12,8 +12,9 @@ WindowControllerTask::WindowControllerTask(
       state(WindowManagerState::AUTOMATIC)
 {
 
-    temperature = serialManager.getvar(2);
-    actualMode = serialManager.getvar(0);
+    temperature = serialManager.getvar(0);
+    actualMode = serialManager.getvar(1);
+    windowcommand = serialManager.getvar(2);
     serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
     serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
     serialManager.addVariableToSend((byte *)&state, VarType::INT);
@@ -52,7 +53,14 @@ void WindowControllerTask::tick()
        // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
-        display.write("No Mode");
+    if (*windowcommand == 1){
+        display.write("Window Opened");
+    } else if (*windowcommand == 0){
+        display.write("Window Closed");
+    } else {
+        display.write("Window Command Error");
+    }
+        
         break;
     }
    
