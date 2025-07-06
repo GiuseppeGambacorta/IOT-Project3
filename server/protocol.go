@@ -34,11 +34,17 @@ type DataHeader struct {
 }
 
 type Protocol struct {
-	conn io.ReadWriteCloser
+	conn          io.ReadWriteCloser
+	sendBuffer    []byte
+	numVarsToSend byte
 }
 
 func NewProtocol(conn io.ReadWriteCloser) *Protocol {
-	return &Protocol{conn: conn}
+	return &Protocol{
+		conn:          conn,
+		sendBuffer:    make([]byte, 0, 128), // Pre-alloca un po' di spazio
+		numVarsToSend: 0,
+	}
 }
 
 func (p *Protocol) Handshake() error {
@@ -138,18 +144,35 @@ func (p *Protocol) ReadMessage() (*DataHeader, error) {
 	return header, nil
 }
 
-func (p *Protocol) WriteData(value int16, id byte) error {
+func (p *Protocol) AddVariableToSend(id byte, value int16) {
+	const size byte = 2 // La dimensione di un int16 è sempre 2 byte
 
-	header := []byte{255, 0}
-
-	size := byte(2)
-
-	valueBytes := make([]byte, 2)
+	valueBytes := make([]byte, size)
 	binary.LittleEndian.PutUint16(valueBytes, uint16(value))
 
-	packet := append(header, id, size)
-	packet = append(packet, valueBytes...)
-	fmt.Printf("DEBUG: Inviando pacchetto: %v\n", valueBytes)
-	_, err := p.conn.Write(packet)
+	// Costruisce il pacchetto per la singola variabile: [ID, Size, Dati...]
+	variablePacket := []byte{id, size}
+	variablePacket = append(variablePacket, valueBytes...)
+
+	// Aggiunge i dati della variabile al buffer di invio generale
+	p.sendBuffer = append(p.sendBuffer, variablePacket...)
+	p.numVarsToSend++
+}
+
+func (p *Protocol) SendBuffer() error {
+	if p.numVarsToSend == 0 {
+		return nil
+	}
+
+	header := []byte{255, 0, p.numVarsToSend}
+
+	finalPacket := append(header, p.sendBuffer...)
+
+	//fmt.Printf("DEBUG: Inviando pacchetto completo (%d variabili): %v\n", p.numVarsToSend, finalPacket)
+	_, err := p.conn.Write(finalPacket)
+
+	p.sendBuffer = p.sendBuffer[:0]
+	p.numVarsToSend = 0
+
 	return err
 }

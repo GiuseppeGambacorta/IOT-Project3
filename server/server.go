@@ -48,7 +48,7 @@ func stateManager(
 	arduinoUpdatesChan <-chan ArduinoData,
 	arduinoCommandChan chan<- ArduinoCommand,
 ) {
-	const t1 float64 = 25.0
+	const t1 float64 = 45.0
 	const t2 float64 = 70.0
 	const normalFreq time.Duration = 500 * time.Millisecond
 	const fastFreq time.Duration = 100 * time.Millisecond
@@ -75,6 +75,9 @@ func stateManager(
 
 	esp32Timer := time.NewTimer(esp32Timeout)
 	arduinoTimer := time.NewTimer(arduinoTimeout)
+	// Ticker per inviare comandi periodici ad Arduino
+	arduinoTicker := time.NewTicker(250 * time.Millisecond)
+	defer arduinoTicker.Stop()
 
 	intervalUpdatesChan <- state.SamplingInterval
 	log.Println("INFO: State Manager avviato.")
@@ -114,7 +117,11 @@ func stateManager(
 			case RequestResetAlarm:
 				resetAlarm = true
 			}
-			sendCommandToArduino(windowAction)
+			// Se c'è un'azione specifica (apri/chiudi), la invia subito.
+			// L'aggiornamento di stato generale verrà inviato dal ticker.
+			if windowAction != 0 {
+				sendCommandToArduino(windowAction)
+			}
 
 		// Case per le richieste di lettura dello stato dall'API.
 		case replyChan := <-stateReqChan:
@@ -156,8 +163,8 @@ func stateManager(
 					inAlarm = false
 				}
 			}
-			var newState string
-			var newFreq time.Duration
+			newState := state.SystemStatus
+			newFreq := state.SamplingInterval
 			if !inAlarm {
 				if temp <= t1 {
 					newState = "NORMAL"
@@ -174,13 +181,13 @@ func stateManager(
 			if newState != state.SystemStatus {
 				log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", newState, temp)
 				state.SystemStatus = newState
+
 			}
 			if newFreq != state.SamplingInterval {
 				log.Printf("INFO: Frequenza di campionamento cambiata a %v", newFreq)
 				state.SamplingInterval = newFreq
 				intervalUpdatesChan <- state.SamplingInterval
 			}
-			sendCommandToArduino(0) // Invia stato aggiornato
 
 		// Case per i dati in arrivo da Arduino.
 		case data := <-arduinoUpdatesChan:
@@ -190,6 +197,10 @@ func stateManager(
 			}
 			arduinoTimer.Reset(arduinoTimeout)
 			state.WindowPosition = data.WindowPosition
+
+		// Case per l'invio periodico ad Arduino.
+		case <-arduinoTicker.C:
+			sendCommandToArduino(0) // Invia stato aggiornato senza azioni specifiche
 
 		// Timeout handlers
 		case <-esp32Timer.C:
@@ -216,30 +227,39 @@ func startArduinoManager(commandChan chan<- RequestType, updatesChan chan<- Ardu
 
 	var wasButtonPressed bool = false
 
-	// Goroutine per la scrittura
+	// Goroutine per la scrittura: si attiva solo quando riceve un comando.
 	go func() {
 		for cmd := range commandInChan {
-			arduino.WriteData(cmd.Temperature, 0)
-			arduino.WriteData(cmd.OperativeMode, 1)
-			arduino.WriteData(cmd.WindowAction, 2)
+			// Prepara le variabili da inviare
+			arduino.addDataToSend(0, cmd.Temperature)
+			arduino.addDataToSend(1, cmd.OperativeMode)
+			arduino.addDataToSend(2, cmd.WindowAction)
+
+			// Invia il pacchetto completo
+			if err := arduino.WriteData(); err != nil {
+				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
+			}
 		}
 	}()
 
-	// Loop per la lettura
+	// Loop principale per la lettura continua da Arduino
 	for {
 		vars, _, _, err := arduino.ReadData()
-		log.Println(vars)
 		if err != nil {
-			continue // Timeout è normale, continua a ciclare
+			// Un timeout è un errore atteso, quindi non lo logghiamo come critico.
+			continue
 		}
+
+		// Ci aspettiamo almeno 2 variabili: stato pulsante e posizione finestra
 		if len(vars) < 2 {
+			log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
 			continue
 		}
 
 		buttonState, ok1 := vars[0].Data.(int16)
 		windowPos, ok2 := vars[1].Data.(int16)
 		if !ok1 || !ok2 {
-			log.Println("ERRORE: Dati da Arduino non validi.")
+			log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
 			continue
 		}
 

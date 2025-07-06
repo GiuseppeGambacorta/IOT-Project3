@@ -17,7 +17,6 @@ WindowControllerTask::WindowControllerTask(
     windowcommand = serialManager.getvar(2);
     serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
     serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
-    serialManager.addVariableToSend((byte *)&state, VarType::INT);
 }
 void WindowControllerTask::tick()
 {
@@ -41,13 +40,24 @@ void WindowControllerTask::tick()
   
    switch (*actualMode)
     {
-    case 0:
+    case AUTOMATIC:
         motor.setPosition(*temperature);
         display.write("Automatic mode");
         break;
 
-    case 1:
-        motor.setPosition(*temperature-10);
+    case MANUAL:
+        if (*windowcommand == 1){
+            motor.setPosition(motor.getPosition() + 5);
+        } else if (*windowcommand == 2){
+            motor.setPosition(motor.getPosition() - 5);
+        } else if (*windowcommand == 0){
+            motor.setPosition(motor.getPosition());
+        }
+
+     
+
+
+        
         display.write("Manual mode");
     
        // display.write(("Temperature: " + String(*temperature)).c_str());
