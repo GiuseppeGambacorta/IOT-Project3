@@ -7,7 +7,6 @@ import (
 	"go.bug.st/serial"
 )
 
-// ArduinoReader gestisce la connessione e la lettura/scrittura dei dati.
 type ArduinoReader struct {
 	portName string
 	baudrate int
@@ -20,7 +19,6 @@ type ArduinoReader struct {
 	Events    []*DataHeader
 }
 
-// NewArduinoReader crea una nuova istanza di ArduinoReader.
 func NewArduinoReader(baudrate int, timeout time.Duration) *ArduinoReader {
 	return &ArduinoReader{
 		baudrate: baudrate,
@@ -28,7 +26,6 @@ func NewArduinoReader(baudrate int, timeout time.Duration) *ArduinoReader {
 	}
 }
 
-// findArduinoPort trova la prima porta seriale disponibile.
 func (ar *ArduinoReader) findArduinoPort() (string, error) {
 	ports, err := serial.GetPortsList()
 	if err != nil {
@@ -40,7 +37,6 @@ func (ar *ArduinoReader) findArduinoPort() (string, error) {
 	return ports[0], nil
 }
 
-// Connect si connette alla porta Arduino ed esegue l'handshake.
 func (ar *ArduinoReader) Connect() error {
 	var err error
 	ar.portName, err = ar.findArduinoPort()
@@ -60,7 +56,6 @@ func (ar *ArduinoReader) Connect() error {
 	ar.protocol = NewProtocol(ar.conn)
 	fmt.Printf("Connesso ad Arduino su %s a %d baud.\n", ar.portName, ar.baudrate)
 
-	// L'handshake è cruciale per sincronizzarsi con Arduino dopo l'apertura della porta.
 	if err := ar.protocol.Handshake(); err != nil {
 		ar.conn.Close()
 		return fmt.Errorf("handshake fallito: %w", err)
@@ -69,7 +64,6 @@ func (ar *ArduinoReader) Connect() error {
 	return nil
 }
 
-// Disconnect chiude la connessione seriale.
 func (ar *ArduinoReader) Disconnect() {
 	if ar.conn != nil {
 		ar.conn.Close()
@@ -77,7 +71,6 @@ func (ar *ArduinoReader) Disconnect() {
 	}
 }
 
-// ReadData legge un blocco di messaggi da Arduino.
 func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, events []*DataHeader, err error) {
 	if ar.conn == nil {
 		return nil, nil, nil, fmt.Errorf("connessione seriale non aperta")
@@ -114,7 +107,6 @@ func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, e
 	return ar.Variables, ar.Debugs, ar.Events, nil
 }
 
-// WriteData scrive dati sulla connessione.
 func (ar *ArduinoReader) WriteData(value int16, id byte) error {
 	if ar.conn == nil {
 		return fmt.Errorf("connessione seriale non aperta")

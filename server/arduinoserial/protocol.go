@@ -7,7 +7,6 @@ import (
 	"math"
 )
 
-// MessageType simula l'enum MessageType di Python.
 type MessageType byte
 
 const (
@@ -16,7 +15,6 @@ const (
 	Event MessageType = 2
 )
 
-// VarType simula l'enum VarType di Python.
 type VarType byte
 
 const (
@@ -26,7 +24,6 @@ const (
 	Float  VarType = 3
 )
 
-// DataHeader contiene i dati di un singolo messaggio, simile alla classe Python.
 type DataHeader struct {
 	MessageType MessageType
 	VarType     VarType
@@ -36,27 +33,23 @@ type DataHeader struct {
 	Data any
 }
 
-// Protocol gestisce la comunicazione a basso livello.
 type Protocol struct {
 	conn io.ReadWriteCloser
 }
 
-// NewProtocol crea una nuova istanza di Protocol.
 func NewProtocol(conn io.ReadWriteCloser) *Protocol {
 	return &Protocol{conn: conn}
 }
 
-// Handshake esegue la stretta di mano con Arduino.
 func (p *Protocol) Handshake() error {
 	buf := make([]byte, 1)
 	for {
 		fmt.Println("Aspetto che Arduino si connetta...")
-		// Invia 255
+
 		if _, err := p.conn.Write([]byte{255}); err != nil {
 			return fmt.Errorf("errore durante la scrittura per l'handshake: %w", err)
 		}
 
-		// Legge la risposta
 		n, err := p.conn.Read(buf)
 		if err != nil {
 			if err == io.EOF {
@@ -65,21 +58,19 @@ func (p *Protocol) Handshake() error {
 			return fmt.Errorf("errore durante la lettura per l'handshake: %w", err)
 		}
 		if n > 0 && buf[0] == 10 {
-			break // Successo
+			break
 		}
 	}
 	fmt.Println("Arduino connesso!")
 	return nil
 }
 
-// readByte legge un singolo byte dalla connessione.
 func (p *Protocol) readByte() (byte, error) {
 	buf := make([]byte, 1)
 	_, err := p.conn.Read(buf)
 	return buf[0], err
 }
 
-// ReadCommunicationData legge l'header della comunicazione e restituisce il numero di messaggi.
 func (p *Protocol) ReadCommunicationData() (int, error) {
 	// Legge la sequenza di start 255, 0
 	b1, err := p.readByte()
@@ -95,7 +86,6 @@ func (p *Protocol) ReadCommunicationData() (int, error) {
 		return 0, fmt.Errorf("errore di sincronizzazione, ricevuto: %d, %d", b1, b2)
 	}
 
-	// Legge il numero di messaggi
 	numMessages, err := p.readByte()
 	if err != nil {
 		return 0, err
@@ -103,7 +93,6 @@ func (p *Protocol) ReadCommunicationData() (int, error) {
 	return int(numMessages), nil
 }
 
-// ReadMessage legge e decodifica un singolo messaggio.
 func (p *Protocol) ReadMessage() (*DataHeader, error) {
 	msgType, err := p.readByte()
 	if err != nil {
@@ -149,18 +138,15 @@ func (p *Protocol) ReadMessage() (*DataHeader, error) {
 	return header, nil
 }
 
-// WriteData scrive un valore intero sulla connessione seriale.
 func (p *Protocol) WriteData(value int16, id byte) error {
-	// Header di inizio comunicazione
+
 	header := []byte{255, 0}
 
-	size := byte(2) // int16 occupa 2 byte
+	size := byte(2)
 
-	// Converte il valore in byte
 	valueBytes := make([]byte, 2)
 	binary.LittleEndian.PutUint16(valueBytes, uint16(value))
 
-	// Costruisce il pacchetto completo
 	packet := append(header, id, size)
 	packet = append(packet, valueBytes...)
 	fmt.Printf("DEBUG: Inviando pacchetto: %v\n", valueBytes)

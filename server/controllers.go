@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// SystemState contiene tutti i dati condivisi dell'applicazione.
-// Ho aggiunto OperativeMode per gestire la modalità manuale/automatica.
+// SystemState rimane invariato.
 type SystemState struct {
 	CurrentTemp      float64
 	AverageTemp      float64
@@ -21,22 +20,19 @@ type SystemState struct {
 	OperativeMode    string // "AUTOMATIC" o "MANUAL"
 }
 
+// RequestType è ancora usato per i comandi di modifica.
 type RequestType int
 
 const (
-	RequestReadState RequestType = iota
-	RequestToggleMode
+	RequestToggleMode RequestType = iota
 	RequestOpenWindow
 	RequestCloseWindow
 	RequestResetAlarm
 )
 
-type StateRequest struct {
-	Type      RequestType
-	ReplyChan chan SystemState
-}
+// StateRequest non è più necessaria e viene rimossa.
 
-// --- Interfaccia Controller ---
+// --- Interfaccia Controller (invariata) ---
 
 type APIController interface {
 	TemperatureStats(w http.ResponseWriter, r *http.Request)
@@ -51,28 +47,36 @@ type APIController interface {
 	GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
-// --- Factory Function ---
+// --- Factory Function (modificata per accettare due canali) ---
 
-func NewController(useMock bool, requests chan<- StateRequest) APIController {
+func NewController(useMock bool, commandChan chan<- RequestType, stateReqChan chan<- chan SystemState) APIController {
 	if useMock {
 		fmt.Println("INFO: Utilizzo del controller MOCK.")
 		return &MockController{}
 	}
 	fmt.Println("INFO: Utilizzo del controller REALE.")
-	return &AppController{requestsChan: requests}
+	return &AppController{
+		commandChan:  commandChan,
+		stateReqChan: stateReqChan,
+	}
 }
 
-// --- Implementazione Reale (AppController) ---
+// --- Implementazione Reale (modificata per usare due canali) ---
 
 type AppController struct {
-	requestsChan chan<- StateRequest
+	commandChan  chan<- RequestType
+	stateReqChan chan<- chan SystemState
+}
+
+// getState è una funzione helper per ridurre la duplicazione di codice nelle richieste di lettura.
+func (c *AppController) getState() SystemState {
+	replyChan := make(chan SystemState)
+	c.stateReqChan <- replyChan
+	return <-replyChan
 }
 
 func (c *AppController) TemperatureStats(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	stats := map[string]float64{
 		"current": state.CurrentTemp,
 		"average": state.AverageTemp,
@@ -84,59 +88,44 @@ func (c *AppController) TemperatureStats(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *AppController) DevicesStates(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(state.DevicesOnline)
 }
 
 func (c *AppController) SystemStatus(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": state.SystemStatus})
 }
 
 func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{"position": state.WindowPosition})
 }
 
 func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	isAlarmActive := state.SystemStatus == "ALARM"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"attivo": isAlarmActive})
 }
 
 func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
-	replyChan := make(chan SystemState)
-	c.requestsChan <- StateRequest{ReplyChan: replyChan}
-	state := <-replyChan
-
+	state := c.getState()
 	isManual := state.OperativeMode == "MANUAL"
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"manuale": isManual})
 }
 
-// --- Metodi di scrittura (non ancora implementati con logica reale) ---
+// --- Metodi di scrittura (modificati per usare commandChan) ---
 func (c *AppController) ChangeMode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.requestsChan <- StateRequest{Type: RequestToggleMode}
+	c.commandChan <- RequestToggleMode
 	fmt.Println("INFO: Inviato comando di cambio modalità.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -146,7 +135,7 @@ func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.requestsChan <- StateRequest{Type: RequestOpenWindow}
+	c.commandChan <- RequestOpenWindow
 	fmt.Println("INFO: Inviato comando di apertura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -156,7 +145,7 @@ func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.requestsChan <- StateRequest{Type: RequestCloseWindow}
+	c.commandChan <- RequestCloseWindow
 	fmt.Println("INFO: Inviato comando di chiusura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -166,12 +155,12 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.requestsChan <- StateRequest{Type: RequestResetAlarm}
+	c.commandChan <- RequestResetAlarm
 	fmt.Println("INFO: Inviato comando di reset allarme.")
 	w.WriteHeader(http.StatusOK)
 }
 
-// --- Implementazione Mock (MockController) ---
+// --- Implementazione Mock (invariata) ---
 
 type MockController struct{}
 

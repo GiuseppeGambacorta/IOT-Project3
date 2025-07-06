@@ -8,25 +8,23 @@ import (
 
 type WindowManagerState int
 
-// Definiamo i valori possibili per lo stato.
 const (
 	AUTOMATIC WindowManagerState = iota // Assegna 0
 	MANUAL                              // Assegna 1
 )
 
 func main() {
-	// Crea un nuovo reader con baudrate 9600 e timeout di 1 secondo.
+
 	arduino := NewArduinoReader(9600, 5*time.Second)
 	var actualState WindowManagerState = AUTOMATIC
 	var oldbuttonState bool
-	// Connettiti ad Arduino.
+
 	if err := arduino.Connect(); err != nil {
 		log.Fatalf("Impossibile connettersi: %v", err)
 	}
-	// Assicura che la connessione venga chiusa alla fine.
+
 	defer arduino.Disconnect()
 
-	// Loop per leggere i dati.
 	for {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
@@ -64,7 +62,6 @@ func main() {
 		fmt.Printf("Stato attuale: %v, Posizione finestra: %d\n", actualState, windowPosition)
 		fmt.Printf("Stato che arriva: %d\n", statochearriva)
 
-		// Attendi un po' prima della prossima lettura.
 		time.Sleep(250 * time.Millisecond)
 		arduino.WriteData(50, 2)
 		arduino.WriteData(int16(actualState), 0)

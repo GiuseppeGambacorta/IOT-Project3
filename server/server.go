@@ -26,8 +26,14 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateRequest, intervalUpdatesChan chan<- time.Duration) {
-	// ... (costanti e inizializzazione di 'state' e 'timer' invariate) ...
+// stateManager è la goroutine centrale che gestisce lo stato dell'applicazione.
+// Ora riceve due canali separati per comandi e richieste di stato.
+func stateManager(
+	tempUpdatesChan <-chan float64,
+	commandChan <-chan RequestType,
+	stateReqChan <-chan chan SystemState,
+	intervalUpdatesChan chan<- time.Duration,
+) {
 	const t1 float64 = 25.0
 	const t2 float64 = 70.0
 	const normalFreq time.Duration = 500 * time.Millisecond
@@ -65,12 +71,9 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 
 	for {
 		select {
-		// Questo case ora gestisce sia le letture che le scritture.
-		case req := <-requestsChan:
-			switch req.Type {
-			case RequestReadState:
-				// Se è una richiesta di lettura, rispondi sul canale.
-				req.ReplyChan <- state
+		// Case per i comandi di scrittura (non richiedono risposta).
+		case cmd := <-commandChan:
+			switch cmd {
 			case RequestToggleMode:
 				if state.OperativeMode == "AUTOMATIC" {
 					state.OperativeMode = "MANUAL"
@@ -79,35 +82,40 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 				}
 				log.Printf("INFO: Modalità operativa cambiata a %s.", state.OperativeMode)
 			case RequestOpenWindow:
-				// Qui andrà la logica per comandare l'attuatore (es. via MQTT)
 				log.Println("COMANDO: Apertura finestra (logica da implementare).")
 			case RequestCloseWindow:
-				// Qui andrà la logica per comandare l'attuatore (es. via MQTT)
 				log.Println("COMANDO: Chiusura finestra (logica da implementare).")
 			case RequestResetAlarm:
 				resetAlarm = true
-
 			}
 
+		// Case per le richieste di lettura dello stato (richiedono risposta).
+		case replyChan := <-stateReqChan:
+			replyChan <- state
+
+		// Case per gli aggiornamenti di temperatura da MQTT.
 		case temp := <-tempUpdatesChan:
-			// ... (la logica di gestione della temperatura e del timer rimane invariata) ...
 			if !state.DevicesOnline["esp32"] {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
 				state.DevicesOnline["esp32"] = true
-				esp32Timer.Reset(esp32Timeout)
-			} else {
-				if !esp32Timer.Stop() {
-					<-esp32Timer.C
-				}
-				esp32Timer.Reset(esp32Timeout)
 			}
+			// Resetta sempre il timer quando arriva un messaggio.
+			if !esp32Timer.Stop() {
+				// Assicura che il canale del timer sia vuoto se era già scaduto.
+				select {
+				case <-esp32Timer.C:
+				default:
+				}
+			}
+			esp32Timer.Reset(esp32Timeout)
+
+			// Aggiorna la cronologia e le statistiche delle temperature.
 			tempHistory = append(tempHistory, temp)
 			if len(tempHistory) > historySize {
 				tempHistory = tempHistory[1:]
 			}
 			var sum float64
-			min := math.Inf(1)
-			max := math.Inf(-1)
+			min, max := math.Inf(1), math.Inf(-1)
 			for _, t := range tempHistory {
 				sum += t
 				if t < min {
@@ -122,6 +130,7 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 			state.MinTemp = min
 			state.MaxTemp = max
 
+			// Logica di gestione dell'allarme.
 			if resetAlarm {
 				resetAlarm = false
 				if temp <= t2 {
@@ -153,6 +162,7 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 				intervalUpdatesChan <- state.SamplingInterval
 			}
 
+		// Case per il timeout del dispositivo ESP32.
 		case <-esp32Timer.C:
 			log.Println("ATTENZIONE: Dispositivo ESP32 è andato OFFLINE (timeout).")
 			state.DevicesOnline["esp32"] = false
@@ -160,7 +170,7 @@ func stateManager(tempUpdatesChan <-chan float64, requestsChan <-chan StateReque
 	}
 }
 
-// startMqttPublisher ora riceve la frequenza da inviare dallo stateManager.
+// startMqttPublisher rimane invariato.
 func startMqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
 	const configTopic = "esp32/config/interval"
 	fmt.Println("INFO: Publisher MQTT avviato.")
@@ -168,10 +178,8 @@ func startMqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Dura
 	for {
 		interval := <-IntervalUpdatesChan
 		intervalPayload := strconv.FormatInt(interval.Milliseconds(), 10)
-
 		token := client.Publish(configTopic, 1, false, intervalPayload)
 		token.Wait()
-
 		if token.Error() != nil {
 			log.Printf("ERRORE: Impossibile pubblicare su MQTT: %v\n", token.Error())
 		} else {
@@ -180,9 +188,11 @@ func startMqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Dura
 	}
 }
 
-func startApiServer(requestsChan chan<- StateRequest) {
+// startApiServer ora accetta i due nuovi canali.
+func startApiServer(commandChan chan<- RequestType, stateReqChan chan<- chan SystemState) {
 	var usemock = false
-	apiController := NewController(usemock, requestsChan)
+	// Passa i canali corretti al costruttore del controller.
+	apiController := NewController(usemock, commandChan, stateReqChan)
 
 	routes := map[string]http.HandlerFunc{
 		"/api/temperature-stats":  apiController.TemperatureStats,
@@ -202,8 +212,7 @@ func startApiServer(requestsChan chan<- StateRequest) {
 	}
 
 	fmt.Println("INFO: API in ascolto su :8080")
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
+	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("ERRORE: Impossibile avviare il server API: %v", err)
 	}
 }
@@ -211,7 +220,10 @@ func startApiServer(requestsChan chan<- StateRequest) {
 func main() {
 	// --- Canali per la comunicazione tra goroutine ---
 	tempUpdatesChan := make(chan float64)
-	stateRequestsChan := make(chan StateRequest)
+	// Canale per i comandi di scrittura.
+	commandChan := make(chan RequestType)
+	// Canale per le richieste di lettura dello stato.
+	stateReqChan := make(chan chan SystemState)
 	intervalUpdatesChan := make(chan time.Duration)
 
 	// --- Configurazione e connessione MQTT ---
@@ -230,13 +242,11 @@ func main() {
 
 	// --- Handler per i messaggi di temperatura ---
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
-		fmt.Printf("DEBUG: Ricevuto messaggio: %s dal topic: %s\n", msg.Payload(), msg.Topic())
 		temp, err := strconv.ParseFloat(string(msg.Payload()), 64)
 		if err != nil {
 			log.Printf("ERRORE: Impossibile convertire il payload della temperatura: %v", err)
 			return
 		}
-		// Invia la temperatura allo stateManager
 		tempUpdatesChan <- temp
 	}
 
@@ -246,11 +256,12 @@ func main() {
 	}
 	fmt.Printf("INFO: Sottoscritto con successo al topic: %s\n", tempTopic)
 
-	// --- Avvio delle Goroutine ---
-	go stateManager(tempUpdatesChan, stateRequestsChan, intervalUpdatesChan)
-	go startApiServer(stateRequestsChan)
+	// --- Avvio delle Goroutine con i canali corretti ---
+	go stateManager(tempUpdatesChan, commandChan, stateReqChan, intervalUpdatesChan)
+	go startApiServer(commandChan, stateReqChan)
 	go startMqttPublisher(client, intervalUpdatesChan)
 
 	fmt.Println("INFO: Tutti i servizi sono stati avviati.")
+	// Blocca l'esecuzione del main per mantenere le goroutine attive.
 	select {}
 }
