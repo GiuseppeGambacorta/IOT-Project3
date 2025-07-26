@@ -34,7 +34,7 @@ func (ar *ArduinoReader) findArduinoPort() (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("nessuna porta seriale trovata")
 	}
-	return ports[1], nil
+	return ports[0], nil
 }
 
 func (ar *ArduinoReader) Connect() error {
@@ -76,7 +76,6 @@ func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, e
 		return nil, nil, nil, fmt.Errorf("connessione seriale non aperta")
 	}
 
-	// Pulisce le liste
 	ar.Variables = ar.Variables[:0]
 	ar.Debugs = ar.Debugs[:0]
 	ar.Events = ar.Events[:0]
@@ -86,7 +85,7 @@ func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, e
 		return nil, nil, nil, fmt.Errorf("errore di lettura dati comunicazione: %w", err)
 	}
 	if numMessages == 0 {
-		return ar.Variables, ar.Debugs, ar.Events, nil // Nessun messaggio da leggere
+		return ar.Variables, ar.Debugs, ar.Events, nil
 	}
 
 	for i := 0; i < numMessages; i++ {
@@ -107,7 +106,7 @@ func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, e
 	return ar.Variables, ar.Debugs, ar.Events, nil
 }
 
-func (ar *ArduinoReader) addDataToSend(id byte, value int16) {
+func (ar *ArduinoReader) addDataToSend(id byte, value []byte) {
 	if ar.protocol == nil {
 		fmt.Println("Protocollo non inizializzato, impossibile aggiungere dati.")
 		return

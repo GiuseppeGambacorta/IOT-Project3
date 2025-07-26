@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"time"
@@ -24,7 +25,12 @@ func main() {
 	}
 
 	defer arduino.Disconnect()
+
 	var num int16 = 0
+	numbytes := make([]byte, 2)
+	stateBytes := make([]byte, 2)
+	windowPositionBytes := make([]byte, 2)
+
 	for {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
@@ -62,13 +68,16 @@ func main() {
 
 		time.Sleep(250 * time.Millisecond)
 
-		arduino.addDataToSend(0, num)
+		binary.LittleEndian.PutUint16(numbytes, uint16(num))
+		binary.LittleEndian.PutUint16(stateBytes, uint16(actualState))
+		binary.LittleEndian.PutUint16(windowPositionBytes, uint16(windowPosition))
+		arduino.addDataToSend(0, numbytes)
 		num = num + 1
 		if num > 90 {
 			num = 0
 		}
-		arduino.addDataToSend(1, int16(actualState))
-		arduino.addDataToSend(2, windowPosition)
+		arduino.addDataToSend(1, stateBytes)
+		arduino.addDataToSend(2, windowPositionBytes)
 		arduino.WriteData()
 	}
 }

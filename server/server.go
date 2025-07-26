@@ -22,6 +22,7 @@ type ArduinoCommand struct {
 	Temperature   int16
 	OperativeMode int16 // 0 per AUTOMATIC, 1 per MANUAL
 	WindowAction  int16 // 0: None, 1: Open, 2: Close
+	systemState   int16
 }
 
 // --- Middleware ---
@@ -92,6 +93,7 @@ func stateManager(
 			Temperature:   int16(state.CurrentTemp),
 			OperativeMode: mode,
 			WindowAction:  action,
+			systemState:   int16(state.SystemStatus),
 		}
 	}
 

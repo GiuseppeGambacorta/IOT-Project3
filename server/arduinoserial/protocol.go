@@ -29,24 +29,24 @@ type DataHeader struct {
 	VarType     VarType
 	ID          byte
 	Size        byte
-	// 'any' (o interface{}) permette di contenere tipi diversi (int16, string, float32).
-	Data any
+	Data        any
 }
 
 type Protocol struct {
 	conn          io.ReadWriteCloser
-	sendBuffer    []byte
+	dataToSend    []byte
 	numVarsToSend byte
 }
 
 func NewProtocol(conn io.ReadWriteCloser) *Protocol {
 	return &Protocol{
 		conn:          conn,
-		sendBuffer:    make([]byte, 0, 128), // Pre-alloca un po' di spazio
+		dataToSend:    make([]byte, 0, 128),
 		numVarsToSend: 0,
 	}
 }
 
+// send a 255 byte handshake to Arduino and wait for a response, the responde should be a byte 10
 func (p *Protocol) Handshake() error {
 	buf := make([]byte, 1)
 	for {
@@ -77,8 +77,9 @@ func (p *Protocol) readByte() (byte, error) {
 	return buf[0], err
 }
 
+// the first two bytes should be 255 and 0, the third byte is the number of messages
 func (p *Protocol) ReadCommunicationData() (int, error) {
-	// Legge la sequenza di start 255, 0
+
 	b1, err := p.readByte()
 	if err != nil {
 		return 0, err
@@ -144,18 +145,13 @@ func (p *Protocol) ReadMessage() (*DataHeader, error) {
 	return header, nil
 }
 
-func (p *Protocol) AddVariableToSend(id byte, value int16) {
-	const size byte = 2 // La dimensione di un int16 è sempre 2 byte
+func (p *Protocol) AddVariableToSend(id byte, value []byte) {
 
-	valueBytes := make([]byte, size)
-	binary.LittleEndian.PutUint16(valueBytes, uint16(value))
-
-	// Costruisce il pacchetto per la singola variabile: [ID, Size, Dati...]
+	size := byte(len(value))
 	variablePacket := []byte{id, size}
-	variablePacket = append(variablePacket, valueBytes...)
+	variablePacket = append(variablePacket, value...)
 
-	// Aggiunge i dati della variabile al buffer di invio generale
-	p.sendBuffer = append(p.sendBuffer, variablePacket...)
+	p.dataToSend = append(p.dataToSend, variablePacket...)
 	p.numVarsToSend++
 }
 
@@ -166,12 +162,12 @@ func (p *Protocol) SendBuffer() error {
 
 	header := []byte{255, 0, p.numVarsToSend}
 
-	finalPacket := append(header, p.sendBuffer...)
+	finalPacket := append(header, p.dataToSend...)
 
 	fmt.Printf("DEBUG: Inviando pacchetto completo (%d variabili): %v\n", p.numVarsToSend, finalPacket)
 	_, err := p.conn.Write(finalPacket)
 
-	p.sendBuffer = p.sendBuffer[:0]
+	p.dataToSend = p.dataToSend[:0]
 	p.numVarsToSend = 0
 
 	return err
