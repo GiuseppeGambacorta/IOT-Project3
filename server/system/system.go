@@ -5,7 +5,10 @@ import (
 )
 
 type DeviceName string
+type Degree int
 
+//
+//go:generate stringer -type=OperativeMode
 type OperativeMode int
 
 const (
@@ -43,7 +46,7 @@ type System struct {
 	Status           SystemStatus
 	SamplingInterval time.Duration
 	DevicesOnline    map[DeviceName]bool
-	WindowPosition   int
+	WindowPosition   Degree
 	OperativeMode    OperativeMode // "AUTOMATIC" o "MANUAL"
 }
 

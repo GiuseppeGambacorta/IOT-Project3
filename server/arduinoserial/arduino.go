@@ -13,7 +13,7 @@ import (
 // --- Tipi per la comunicazione con Arduino ---
 
 type DataFromArduino struct {
-	WindowPosition int
+	WindowPosition system.Degree
 }
 
 type DataToArduino struct {
@@ -196,7 +196,7 @@ func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan D
 		}
 		wasButtonPressed = isButtonPressed
 
-		newData := DataFromArduino{WindowPosition: int(windowPos)}
+		newData := DataFromArduino{WindowPosition: system.Degree(windowPos)}
 
 		select {
 		case dataFromArduino <- newData:

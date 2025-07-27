@@ -73,7 +73,7 @@ func (c *AppController) SystemStatus(w http.ResponseWriter, r *http.Request) {
 func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
 	state := c.getState()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]int{"position": state.WindowPosition})
+	json.NewEncoder(w).Encode(map[string]system.Degree{"position": state.WindowPosition})
 }
 
 func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {

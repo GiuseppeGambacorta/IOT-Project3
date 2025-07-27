@@ -83,7 +83,7 @@ func stateManager(
 				} else {
 					systemState.OperativeMode = system.Automatic
 				}
-				log.Printf("INFO: Modalità operativa cambiata a %s.", systemState.OperativeMode)
+				log.Printf("INFO: Modalità operativa cambiata a %s.", systemState.OperativeMode.String())
 			case system.OpenWindow:
 				log.Println("COMANDO: Apertura finestra.")
 				windowAction = 1
@@ -213,7 +213,7 @@ func main() {
 
 	err := mqtt.SubscribeToTopic(client, temperatureMessageHandler, tempTopic)
 	if err != nil {
-		log.Panicf("ERRORE:Impossibile sottoscrivere il topic %s", tempTopic)
+		goto Error
 	}
 
 	// --- Avvio delle Goroutine ---
@@ -224,4 +224,7 @@ func main() {
 
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 	select {}
+
+Error:
+	log.Println(err)
 }
