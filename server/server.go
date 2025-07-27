@@ -1,37 +1,24 @@
 package main
 
 import (
-	"encoding/binary"
 	"log"
 	"math"
-	"net/http"
-	"server/arduinoserial"
 	"strconv"
+
+	"server/arduinoserial"
+	"server/mqtt"
+	"server/system"
+	"server/webserver"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-// --- Middleware ---
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 // stateManager è la goroutine centrale che gestisce lo stato dell'applicazione.
 func stateManager(
 	tempUpdatesChan <-chan float64,
-	commandChan <-chan RequestType,
-	stateReqChan <-chan chan SystemState,
+	commandChan <-chan system.RequestType,
+	stateReqChan <-chan chan system.SystemState,
 	intervalUpdatesChan chan<- time.Duration,
 	dataFromArduino <-chan arduinoserial.DataFromArduino,
 	dataToArduino chan<- arduinoserial.DataToArduino,
@@ -47,7 +34,7 @@ func stateManager(
 	var resetAlarm = false
 	var inAlarm = false
 
-	state := SystemState{
+	state := system.SystemState{
 		SystemStatus:     "NORMAL",
 		SamplingInterval: normalFreq,
 		OperativeMode:    "AUTOMATIC",
@@ -76,11 +63,11 @@ func stateManager(
 		if state.OperativeMode == "MANUAL" {
 			mode = 1
 		}
-		dataToArduino <- ArduinoCommand{
+		dataToArduino <- arduinoserial.DataToArduino{
 			Temperature:   int16(state.CurrentTemp),
 			OperativeMode: mode,
 			WindowAction:  action,
-			systemState:   int16(state.SystemStatus),
+			SystemState:   0,
 		}
 	}
 
@@ -90,20 +77,20 @@ func stateManager(
 		case cmd := <-commandChan:
 			var windowAction int16 = 0
 			switch cmd {
-			case RequestToggleMode:
+			case system.ToggleMode:
 				if state.OperativeMode == "AUTOMATIC" {
 					state.OperativeMode = "MANUAL"
 				} else {
 					state.OperativeMode = "AUTOMATIC"
 				}
 				log.Printf("INFO: Modalità operativa cambiata a %s.", state.OperativeMode)
-			case RequestOpenWindow:
+			case system.OpenWindow:
 				log.Println("COMANDO: Apertura finestra.")
 				windowAction = 1
-			case RequestCloseWindow:
+			case system.CloseWindow:
 				log.Println("COMANDO: Chiusura finestra.")
 				windowAction = 2
-			case RequestResetAlarm:
+			case system.ResetAlarm:
 				resetAlarm = true
 			}
 			// Se c'è un'azione specifica (apri/chiudi), la invia subito.
@@ -202,109 +189,11 @@ func stateManager(
 	}
 }
 
-func arduinoManager(requestChan chan<- RequestType, dataFromArduino chan<- arduinoserial.DataFromArduino, dataToArduino <-chan arduinoserial.DataToArduino) {
-	arduino := arduinoserial.NewArduinoReader(9600, 5*time.Second)
-	if err := arduino.Connect(); err != nil {
-		log.Printf("ERRORE: Impossibile connettersi ad Arduino: %v. Riprovo...", err)
-		time.Sleep(5 * time.Second)
-		arduinoManager(requestChan, dataFromArduino, dataToArduino)
-		return
-	}
-	defer arduino.Disconnect()
-	log.Println("INFO: Connesso ad Arduino.")
-
-	var wasButtonPressed bool = false
-
-	// Goroutine per la scrittura: si attiva solo quando riceve un comando.
-	go func() {
-		byteToSend := make([]byte, 2)
-
-		for cmd := range dataToArduino {
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.Temperature))
-			arduino.AddDataToSend(0, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
-			arduino.AddDataToSend(1, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
-			arduino.AddDataToSend(2, byteToSend)
-
-			if err := arduino.WriteData(); err != nil {
-				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
-			}
-		}
-	}()
-
-	// Loop principale per la lettura continua da Arduino
-	for {
-		vars, _, _, err := arduino.ReadData()
-		if err != nil {
-			//timeout, is not critical
-			continue
-		}
-
-		if len(vars) < 2 {
-			log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
-			continue
-		}
-
-		buttonState, ok1 := vars[0].Data.(int16)
-		windowPos, ok2 := vars[1].Data.(int16)
-		if !ok1 || !ok2 {
-			log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
-			continue
-		}
-
-		isButtonPressed := (buttonState == 1)
-		// Rileva il fronte di salita del pulsante per inviare un solo comando
-		if isButtonPressed && !wasButtonPressed {
-			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
-			requestChan <- ToggleMode
-		}
-		wasButtonPressed = isButtonPressed
-
-		dataFromArduino <- arduinoserial.DataFromArduino{WindowPosition: int(windowPos)}
-	}
-}
-
-func mqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
-	const configTopic = "esp32/config/interval"
-	log.Println("INFO: Publisher MQTT avviato.")
-	for interval := range IntervalUpdatesChan {
-		intervalPayload := strconv.FormatInt(interval.Milliseconds(), 10)
-		token := client.Publish(configTopic, 1, false, intervalPayload)
-		token.Wait()
-	}
-}
-
-// startApiServer rimane invariato.
-func startApiServer(commandChan chan<- RequestType, stateReqChan chan<- chan SystemState) {
-	useMock := false
-	apiController := NewController(useMock, commandChan, stateReqChan)
-	routes := map[string]http.HandlerFunc{
-		"/api/temperature-stats":  apiController.TemperatureStats,
-		"/api/devices-states":     apiController.DevicesStates,
-		"/api/system-status":      apiController.SystemStatus,
-		"/api/window-position":    apiController.WindowPosition,
-		"/api/change-mode":        apiController.ChangeMode,
-		"/api/open-window":        apiController.OpenWindow,
-		"/api/close-window":       apiController.CloseWindow,
-		"/api/reset-alarm":        apiController.ResetAlarm,
-		"/api/get-alarms":         apiController.GetAlarms,
-		"/api/get-operative-mode": apiController.GetOperativeMode,
-	}
-	for path, handler := range routes {
-		http.Handle(path, corsMiddleware(http.HandlerFunc(handler)))
-	}
-	log.Println("INFO: API in ascolto su :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatalf("ERRORE: Impossibile avviare il server API: %v", err)
-	}
-}
-
 func main() {
 	// --- Canali per la comunicazione tra goroutine ---
 	tempUpdatesChan := make(chan float64)
-	RequestChan := make(chan RequestType)
-	stateReqChan := make(chan chan SystemState)
+	RequestChan := make(chan system.RequestType)
+	stateReqChan := make(chan chan system.SystemState)
 	intervalUpdatesChan := make(chan time.Duration)
 	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino)
 	dataToArduinoChan := make(chan arduinoserial.DataToArduino)
@@ -312,12 +201,7 @@ func main() {
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
 	const tempTopic = "esp32/data/temperature"
-	opts := MQTT.NewClientOptions().AddBroker(broker).SetClientID("go-server-logic")
-	client := MQTT.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Fatalf("ERRORE: Impossibile connettersi al broker MQTT: %v", token.Error())
-	}
-	log.Println("INFO: Connesso al broker MQTT.")
+	client := mqtt.ConfigureClient(broker)
 
 	// --- Handler per i messaggi di temperatura ---
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
@@ -326,16 +210,17 @@ func main() {
 			tempUpdatesChan <- temp
 		}
 	}
-	if token := client.Subscribe(tempTopic, 1, temperatureMessageHandler); token.Wait() && token.Error() != nil {
-		log.Fatalf("ERRORE: Impossibile sottoscriversi al topic %s: %v", tempTopic, token.Error())
+
+	err := mqtt.SubscribeToTopic(client, temperatureMessageHandler, tempTopic)
+	if err != nil {
+		log.Panic("ERRORE:Impossibile sottoscrivere il topic %s", tempTopic)
 	}
-	log.Printf("INFO: Sottoscritto con successo al topic: %s\n", tempTopic)
 
 	// --- Avvio delle Goroutine ---
 	go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
-	go startApiServer(RequestChan, stateReqChan)
-	go mqttPublisher(client, intervalUpdatesChan)
-	go arduinoManager(RequestChan, dataFromArduinoChan, dataToArduinoChan)
+	go webserver.ApiServer(RequestChan, stateReqChan)
+	go mqtt.MqttPublisher(client, intervalUpdatesChan)
+	go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 	select {}

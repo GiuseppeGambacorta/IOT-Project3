@@ -1,38 +1,11 @@
-package main
+package webserver
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+	"server/system"
 )
-
-// SystemState rimane invariato.
-type SystemState struct {
-	CurrentTemp      float64
-	AverageTemp      float64
-	MaxTemp          float64
-	MinTemp          float64
-	SystemStatus     string // "NORMAL", "HOT-STATE", "ALARM"
-	SamplingInterval time.Duration
-	DevicesOnline    map[string]bool
-	WindowPosition   int
-	OperativeMode    string // "AUTOMATIC" o "MANUAL"
-}
-
-// RequestType è ancora usato per i comandi di modifica.
-type RequestType int
-
-const (
-	ToggleMode RequestType = iota
-	OpenWindow
-	CloseWindow
-	ResetAlarm
-)
-
-// StateRequest non è più necessaria e viene rimossa.
-
-// --- Interfaccia Controller (invariata) ---
 
 type APIController interface {
 	TemperatureStats(w http.ResponseWriter, r *http.Request)
@@ -47,9 +20,7 @@ type APIController interface {
 	GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
-// --- Factory Function (modificata per accettare due canali) ---
-
-func NewController(useMock bool, commandChan chan<- RequestType, stateReqChan chan<- chan SystemState) APIController {
+func NewController(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) APIController {
 	if useMock {
 		fmt.Println("INFO: Utilizzo del controller MOCK.")
 		return &MockController{}
@@ -61,16 +32,16 @@ func NewController(useMock bool, commandChan chan<- RequestType, stateReqChan ch
 	}
 }
 
-// --- Implementazione Reale (modificata per usare due canali) ---
+// --- Implementazione Reale
 
 type AppController struct {
-	commandChan  chan<- RequestType
-	stateReqChan chan<- chan SystemState
+	commandChan  chan<- system.RequestType
+	stateReqChan chan<- chan system.SystemState
 }
 
 // getState è una funzione helper per ridurre la duplicazione di codice nelle richieste di lettura.
-func (c *AppController) getState() SystemState {
-	replyChan := make(chan SystemState)
+func (c *AppController) getState() system.SystemState {
+	replyChan := make(chan system.SystemState)
 	c.stateReqChan <- replyChan
 	return <-replyChan
 }
@@ -125,7 +96,7 @@ func (c *AppController) ChangeMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- ToggleMode
+	c.commandChan <- system.ToggleMode
 	fmt.Println("INFO: Inviato comando di cambio modalità.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -135,7 +106,7 @@ func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- OpenWindow
+	c.commandChan <- system.OpenWindow
 	fmt.Println("INFO: Inviato comando di apertura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -145,7 +116,7 @@ func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- CloseWindow
+	c.commandChan <- system.CloseWindow
 	fmt.Println("INFO: Inviato comando di chiusura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -155,12 +126,12 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- ResetAlarm
+	c.commandChan <- system.ResetAlarm
 	fmt.Println("INFO: Inviato comando di reset allarme.")
 	w.WriteHeader(http.StatusOK)
 }
 
-// --- Implementazione Mock (invariata) ---
+// --- Implementazione Mock  ---
 
 type MockController struct{}
 

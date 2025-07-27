@@ -1,7 +1,10 @@
 package arduinoserial
 
 import (
+	"encoding/binary"
 	"fmt"
+	"log"
+	"server/system"
 	"time"
 
 	"go.bug.st/serial"
@@ -17,7 +20,7 @@ type DataToArduino struct {
 	Temperature   int16
 	OperativeMode int16 // 0 per AUTOMATIC, 1 per MANUAL
 	WindowAction  int16 // 0: None, 1: Open, 2: Close
-	systemState   int16
+	SystemState   int16
 }
 
 type ArduinoReader struct {
@@ -132,4 +135,67 @@ func (ar *ArduinoReader) WriteData() error {
 		return fmt.Errorf("connessione seriale non aperta")
 	}
 	return ar.protocol.SendBuffer()
+}
+
+func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan<- DataFromArduino, dataToArduino <-chan DataToArduino) {
+	arduino := NewArduinoReader(9600, 5*time.Second)
+	if err := arduino.Connect(); err != nil {
+		log.Printf("ERRORE: Impossibile connettersi ad Arduino: %v. Riprovo...", err)
+		time.Sleep(5 * time.Second)
+		ManageArduino(requestChan, dataFromArduino, dataToArduino)
+		return
+	}
+	defer arduino.Disconnect()
+	log.Println("INFO: Connesso ad Arduino.")
+
+	var wasButtonPressed bool = false
+
+	// Goroutine per la scrittura: si attiva solo quando riceve un comando.
+	go func() {
+		byteToSend := make([]byte, 2)
+
+		for cmd := range dataToArduino {
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.Temperature))
+			arduino.AddDataToSend(0, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
+			arduino.AddDataToSend(1, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
+			arduino.AddDataToSend(2, byteToSend)
+
+			if err := arduino.WriteData(); err != nil {
+				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
+			}
+		}
+	}()
+
+	// Loop principale per la lettura continua da Arduino
+	for {
+		vars, _, _, err := arduino.ReadData()
+		if err != nil {
+			//timeout, is not critical
+			continue
+		}
+
+		if len(vars) < 2 {
+			log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
+			continue
+		}
+
+		buttonState, ok1 := vars[0].Data.(int16)
+		windowPos, ok2 := vars[1].Data.(int16)
+		if !ok1 || !ok2 {
+			log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
+			continue
+		}
+
+		isButtonPressed := (buttonState == 1)
+		// Rileva il fronte di salita del pulsante per inviare un solo comando
+		if isButtonPressed && !wasButtonPressed {
+			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
+			requestChan <- system.ToggleMode
+		}
+		wasButtonPressed = isButtonPressed
+
+		dataFromArduino <- DataFromArduino{WindowPosition: int(windowPos)}
+	}
 }
