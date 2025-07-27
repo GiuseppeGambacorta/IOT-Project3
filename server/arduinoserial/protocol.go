@@ -1,4 +1,4 @@
-package main
+package arduinoserial
 
 import (
 	"encoding/binary"

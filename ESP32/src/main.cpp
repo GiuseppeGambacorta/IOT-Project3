@@ -66,7 +66,7 @@ void reconnect() {
     } else {
       Serial.print("fallito, rc=");
       Serial.print(client.state());
-      Serial.println(" riprovo tra 5 secondi");
+      Serial.println(" riprovo tra 1 secondo");
       vTaskDelay(pdMS_TO_TICKS(1000)); 
     }
   }

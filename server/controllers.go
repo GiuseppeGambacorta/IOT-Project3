@@ -24,10 +24,10 @@ type SystemState struct {
 type RequestType int
 
 const (
-	RequestToggleMode RequestType = iota
-	RequestOpenWindow
-	RequestCloseWindow
-	RequestResetAlarm
+	ToggleMode RequestType = iota
+	OpenWindow
+	CloseWindow
+	ResetAlarm
 )
 
 // StateRequest non è più necessaria e viene rimossa.
@@ -125,7 +125,7 @@ func (c *AppController) ChangeMode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- RequestToggleMode
+	c.commandChan <- ToggleMode
 	fmt.Println("INFO: Inviato comando di cambio modalità.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -135,7 +135,7 @@ func (c *AppController) OpenWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- RequestOpenWindow
+	c.commandChan <- OpenWindow
 	fmt.Println("INFO: Inviato comando di apertura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -145,7 +145,7 @@ func (c *AppController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- RequestCloseWindow
+	c.commandChan <- CloseWindow
 	fmt.Println("INFO: Inviato comando di chiusura finestra.")
 	w.WriteHeader(http.StatusOK)
 }
@@ -155,7 +155,7 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
 		return
 	}
-	c.commandChan <- RequestResetAlarm
+	c.commandChan <- ResetAlarm
 	fmt.Println("INFO: Inviato comando di reset allarme.")
 	w.WriteHeader(http.StatusOK)
 }

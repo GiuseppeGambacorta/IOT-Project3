@@ -1,29 +1,16 @@
 package main
 
 import (
+	"encoding/binary"
 	"log"
 	"math"
 	"net/http"
+	"server/arduinoserial"
 	"strconv"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
-
-// --- Tipi per la comunicazione con Arduino ---
-
-// ArduinoData rappresenta i dati letti da Arduino.
-type ArduinoData struct {
-	WindowPosition int
-}
-
-// ArduinoCommand rappresenta i comandi inviati ad Arduino.
-type ArduinoCommand struct {
-	Temperature   int16
-	OperativeMode int16 // 0 per AUTOMATIC, 1 per MANUAL
-	WindowAction  int16 // 0: None, 1: Open, 2: Close
-	systemState   int16
-}
 
 // --- Middleware ---
 
@@ -46,8 +33,8 @@ func stateManager(
 	commandChan <-chan RequestType,
 	stateReqChan <-chan chan SystemState,
 	intervalUpdatesChan chan<- time.Duration,
-	arduinoUpdatesChan <-chan ArduinoData,
-	arduinoCommandChan chan<- ArduinoCommand,
+	dataFromArduino <-chan arduinoserial.DataFromArduino,
+	dataToArduino chan<- arduinoserial.DataToArduino,
 ) {
 	const t1 float64 = 45.0
 	const t2 float64 = 70.0
@@ -89,7 +76,7 @@ func stateManager(
 		if state.OperativeMode == "MANUAL" {
 			mode = 1
 		}
-		arduinoCommandChan <- ArduinoCommand{
+		dataToArduino <- ArduinoCommand{
 			Temperature:   int16(state.CurrentTemp),
 			OperativeMode: mode,
 			WindowAction:  action,
@@ -192,7 +179,7 @@ func stateManager(
 			}
 
 		// Case per i dati in arrivo da Arduino.
-		case data := <-arduinoUpdatesChan:
+		case data := <-dataFromArduino:
 			if !state.DevicesOnline["arduino"] {
 				log.Println("INFO: Dispositivo Arduino è ora ONLINE.")
 				state.DevicesOnline["arduino"] = true
@@ -215,13 +202,12 @@ func stateManager(
 	}
 }
 
-// startArduinoManager gestisce la comunicazione seriale con Arduino.
-func startArduinoManager(commandChan chan<- RequestType, updatesChan chan<- ArduinoData, commandInChan <-chan ArduinoCommand) {
-	arduino := NewArduinoReader(9600, 1*time.Second)
+func arduinoManager(requestChan chan<- RequestType, dataFromArduino chan<- arduinoserial.DataFromArduino, dataToArduino <-chan arduinoserial.DataToArduino) {
+	arduino := arduinoserial.NewArduinoReader(9600, 5*time.Second)
 	if err := arduino.Connect(); err != nil {
 		log.Printf("ERRORE: Impossibile connettersi ad Arduino: %v. Riprovo...", err)
 		time.Sleep(5 * time.Second)
-		startArduinoManager(commandChan, updatesChan, commandInChan) // Riprova la connessione
+		arduinoManager(requestChan, dataFromArduino, dataToArduino)
 		return
 	}
 	defer arduino.Disconnect()
@@ -231,13 +217,16 @@ func startArduinoManager(commandChan chan<- RequestType, updatesChan chan<- Ardu
 
 	// Goroutine per la scrittura: si attiva solo quando riceve un comando.
 	go func() {
-		for cmd := range commandInChan {
-			// Prepara le variabili da inviare
-			arduino.addDataToSend(0, cmd.Temperature)
-			arduino.addDataToSend(1, cmd.OperativeMode)
-			arduino.addDataToSend(2, cmd.WindowAction)
+		byteToSend := make([]byte, 2)
 
-			// Invia il pacchetto completo
+		for cmd := range dataToArduino {
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.Temperature))
+			arduino.AddDataToSend(0, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
+			arduino.AddDataToSend(1, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
+			arduino.AddDataToSend(2, byteToSend)
+
 			if err := arduino.WriteData(); err != nil {
 				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
 			}
@@ -248,11 +237,10 @@ func startArduinoManager(commandChan chan<- RequestType, updatesChan chan<- Ardu
 	for {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
-			// Un timeout è un errore atteso, quindi non lo logghiamo come critico.
+			//timeout, is not critical
 			continue
 		}
 
-		// Ci aspettiamo almeno 2 variabili: stato pulsante e posizione finestra
 		if len(vars) < 2 {
 			log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
 			continue
@@ -269,17 +257,15 @@ func startArduinoManager(commandChan chan<- RequestType, updatesChan chan<- Ardu
 		// Rileva il fronte di salita del pulsante per inviare un solo comando
 		if isButtonPressed && !wasButtonPressed {
 			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
-			commandChan <- RequestToggleMode
+			requestChan <- ToggleMode
 		}
 		wasButtonPressed = isButtonPressed
 
-		// Invia i dati aggiornati allo state manager
-		updatesChan <- ArduinoData{WindowPosition: int(windowPos)}
+		dataFromArduino <- arduinoserial.DataFromArduino{WindowPosition: int(windowPos)}
 	}
 }
 
-// startMqttPublisher rimane invariato.
-func startMqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
+func mqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
 	const configTopic = "esp32/config/interval"
 	log.Println("INFO: Publisher MQTT avviato.")
 	for interval := range IntervalUpdatesChan {
@@ -291,7 +277,8 @@ func startMqttPublisher(client MQTT.Client, IntervalUpdatesChan <-chan time.Dura
 
 // startApiServer rimane invariato.
 func startApiServer(commandChan chan<- RequestType, stateReqChan chan<- chan SystemState) {
-	apiController := NewController(false, commandChan, stateReqChan)
+	useMock := false
+	apiController := NewController(useMock, commandChan, stateReqChan)
 	routes := map[string]http.HandlerFunc{
 		"/api/temperature-stats":  apiController.TemperatureStats,
 		"/api/devices-states":     apiController.DevicesStates,
@@ -316,11 +303,11 @@ func startApiServer(commandChan chan<- RequestType, stateReqChan chan<- chan Sys
 func main() {
 	// --- Canali per la comunicazione tra goroutine ---
 	tempUpdatesChan := make(chan float64)
-	commandChan := make(chan RequestType)
+	RequestChan := make(chan RequestType)
 	stateReqChan := make(chan chan SystemState)
 	intervalUpdatesChan := make(chan time.Duration)
-	arduinoUpdatesChan := make(chan ArduinoData)
-	arduinoCommandChan := make(chan ArduinoCommand)
+	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino)
+	dataToArduinoChan := make(chan arduinoserial.DataToArduino)
 
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
@@ -345,11 +332,11 @@ func main() {
 	log.Printf("INFO: Sottoscritto con successo al topic: %s\n", tempTopic)
 
 	// --- Avvio delle Goroutine ---
-	go stateManager(tempUpdatesChan, commandChan, stateReqChan, intervalUpdatesChan, arduinoUpdatesChan, arduinoCommandChan)
-	go startApiServer(commandChan, stateReqChan)
-	go startMqttPublisher(client, intervalUpdatesChan)
-	go startArduinoManager(commandChan, arduinoUpdatesChan, arduinoCommandChan)
+	go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
+	go startApiServer(RequestChan, stateReqChan)
+	go mqttPublisher(client, intervalUpdatesChan)
+	go arduinoManager(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
-	select {} // Blocca l'esecuzione del main
+	select {}
 }

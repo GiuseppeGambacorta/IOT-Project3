@@ -1,5 +1,13 @@
 #include "../api/WindowControllerTask.h"
 
+
+enum windowManualCommand : byte
+{
+    NONE = 0,
+    UP = 1,
+    DOWN = 2
+};
+
 WindowControllerTask::WindowControllerTask(
     AnalogInput &potentiometer,
     DigitalInput &manualButton,
@@ -36,8 +44,7 @@ void WindowControllerTask::tick()
    
    
    //display.write(("Window Position: " + String(motor.getPosition())).c_str());
-   display.write("ciao"); 
-  
+
    switch (*actualMode)
     {
     case AUTOMATIC:
@@ -46,25 +53,28 @@ void WindowControllerTask::tick()
         break;
 
     case MANUAL:
-        if (*windowcommand == 1){
-            motor.setPosition(motor.getPosition() + 5);
-        } else if (*windowcommand == 2){
-            motor.setPosition(motor.getPosition() - 5);
-        } else if (*windowcommand == 0){
+
+        switch (*windowcommand)
+        {
+        case UP:
+                motor.setPosition(motor.getPosition() + 5);
+            break;
+        case DOWN:
+                motor.setPosition(motor.getPosition() - 5);
+            break;
+        case NONE:
             motor.setPosition(motor.getPosition());
+            break;
+        default:
+            break;
         }
-
-     
-
-
         
         display.write("Manual mode");
     
        // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
-  
-        
+        display.write("Unknown mode");
         break;
     }
 
