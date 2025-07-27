@@ -4,20 +4,51 @@ import (
 	"time"
 )
 
-// SystemState rimane invariato.
-type SystemState struct {
+type DeviceName string
+
+type OperativeMode int
+
+const (
+	Manual OperativeMode = iota
+	Automatic
+)
+
+type SystemStatus int16
+
+const (
+	Normal SystemStatus = iota
+	HotState
+	Alarm
+)
+
+func (ss SystemStatus) String() string { // cosi si aggiungono a mano
+	switch ss {
+	case Normal:
+		return "Normal"
+	case HotState:
+		return "HotState"
+	case Alarm:
+		return "Alarm"
+	default:
+		return ""
+	}
+}
+
+// System rimane invariato.
+type System struct {
 	CurrentTemp      float64
 	AverageTemp      float64
 	MaxTemp          float64
 	MinTemp          float64
-	SystemStatus     string // "NORMAL", "HOT-STATE", "ALARM"
+	Status           SystemStatus
 	SamplingInterval time.Duration
-	DevicesOnline    map[string]bool
+	DevicesOnline    map[DeviceName]bool
 	WindowPosition   int
-	OperativeMode    string // "AUTOMATIC" o "MANUAL"
+	OperativeMode    OperativeMode // "AUTOMATIC" o "MANUAL"
 }
 
-// RequestType è ancora usato per i comandi di modifica.
+//
+//go:generate stringer -type=RequestType
 type RequestType int
 
 const (

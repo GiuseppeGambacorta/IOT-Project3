@@ -20,7 +20,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func ApiServer(commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) {
+func ApiServer(commandChan chan<- system.RequestType, stateReqChan chan<- chan system.System) {
 	useMock := false
 	apiController := NewController(useMock, commandChan, stateReqChan)
 	routes := map[string]http.HandlerFunc{

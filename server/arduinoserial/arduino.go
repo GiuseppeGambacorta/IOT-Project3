@@ -137,7 +137,7 @@ func (ar *ArduinoReader) WriteData() error {
 	return ar.protocol.SendBuffer()
 }
 
-func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan<- DataFromArduino, dataToArduino <-chan DataToArduino) {
+func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan DataFromArduino, dataToArduino <-chan DataToArduino) {
 	arduino := NewArduinoReader(9600, 5*time.Second)
 	if err := arduino.Connect(); err != nil {
 		log.Printf("ERRORE: Impossibile connettersi ad Arduino: %v. Riprovo...", err)
@@ -196,6 +196,17 @@ func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan<-
 		}
 		wasButtonPressed = isButtonPressed
 
-		dataFromArduino <- DataFromArduino{WindowPosition: int(windowPos)}
+		newData := DataFromArduino{WindowPosition: int(windowPos)}
+
+		select {
+		case dataFromArduino <- newData:
+
+		default:
+			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock a fare cosi
+			<-dataFromArduino
+
+			dataFromArduino <- newData
+			log.Println("WARN: Buffer dati da Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
+		}
 	}
 }

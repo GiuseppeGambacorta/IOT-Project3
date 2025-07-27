@@ -18,7 +18,7 @@ import (
 func stateManager(
 	tempUpdatesChan <-chan float64,
 	commandChan <-chan system.RequestType,
-	stateReqChan <-chan chan system.SystemState,
+	stateReqChan <-chan chan system.System,
 	intervalUpdatesChan chan<- time.Duration,
 	dataFromArduino <-chan arduinoserial.DataFromArduino,
 	dataToArduino chan<- arduinoserial.DataToArduino,
@@ -34,13 +34,13 @@ func stateManager(
 	var resetAlarm = false
 	var inAlarm = false
 
-	state := system.SystemState{
-		SystemStatus:     "NORMAL",
+	systemState := system.System{
+		Status:           system.Normal,
 		SamplingInterval: normalFreq,
-		OperativeMode:    "AUTOMATIC",
+		OperativeMode:    system.Automatic,
 		MinTemp:          math.Inf(1),
 		MaxTemp:          math.Inf(-1),
-		DevicesOnline: map[string]bool{
+		DevicesOnline: map[system.DeviceName]bool{
 			"server":  true,
 			"esp32":   false,
 			"arduino": false,
@@ -54,17 +54,17 @@ func stateManager(
 	arduinoTicker := time.NewTicker(250 * time.Millisecond)
 	defer arduinoTicker.Stop()
 
-	intervalUpdatesChan <- state.SamplingInterval
+	intervalUpdatesChan <- systemState.SamplingInterval
 	log.Println("INFO: State Manager avviato.")
 
 	// Funzione helper per inviare comandi ad Arduino
 	sendCommandToArduino := func(action int16) {
 		var mode int16 = 0
-		if state.OperativeMode == "MANUAL" {
+		if systemState.OperativeMode == system.Manual {
 			mode = 1
 		}
 		dataToArduino <- arduinoserial.DataToArduino{
-			Temperature:   int16(state.CurrentTemp),
+			Temperature:   int16(systemState.CurrentTemp),
 			OperativeMode: mode,
 			WindowAction:  action,
 			SystemState:   0,
@@ -78,12 +78,12 @@ func stateManager(
 			var windowAction int16 = 0
 			switch cmd {
 			case system.ToggleMode:
-				if state.OperativeMode == "AUTOMATIC" {
-					state.OperativeMode = "MANUAL"
+				if systemState.OperativeMode == system.Automatic {
+					systemState.OperativeMode = system.Manual
 				} else {
-					state.OperativeMode = "AUTOMATIC"
+					systemState.OperativeMode = system.Automatic
 				}
-				log.Printf("INFO: Modalità operativa cambiata a %s.", state.OperativeMode)
+				log.Printf("INFO: Modalità operativa cambiata a %s.", systemState.OperativeMode)
 			case system.OpenWindow:
 				log.Println("COMANDO: Apertura finestra.")
 				windowAction = 1
@@ -101,13 +101,13 @@ func stateManager(
 
 		// Case per le richieste di lettura dello stato dall'API.
 		case replyChan := <-stateReqChan:
-			replyChan <- state
+			replyChan <- systemState
 
 		// Case per gli aggiornamenti di temperatura da MQTT.
 		case temp := <-tempUpdatesChan:
-			if !state.DevicesOnline["esp32"] {
+			if !systemState.DevicesOnline["esp32"] {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
-				state.DevicesOnline["esp32"] = true
+				systemState.DevicesOnline["esp32"] = true
 			}
 			esp32Timer.Reset(esp32Timeout)
 
@@ -127,10 +127,10 @@ func stateManager(
 					max = t
 				}
 			}
-			state.CurrentTemp = temp
-			state.AverageTemp = sum / float64(len(tempHistory))
-			state.MinTemp = min
-			state.MaxTemp = max
+			systemState.CurrentTemp = temp
+			systemState.AverageTemp = sum / float64(len(tempHistory))
+			systemState.MinTemp = min
+			systemState.MaxTemp = max
 
 			// Logica di gestione dell'allarme e frequenza.
 			if resetAlarm {
@@ -139,40 +139,40 @@ func stateManager(
 					inAlarm = false
 				}
 			}
-			newState := state.SystemStatus
-			newFreq := state.SamplingInterval
+			newStatus := systemState.Status
+			newFreq := systemState.SamplingInterval
 			if !inAlarm {
 				if temp <= t1 {
-					newState = "NORMAL"
+					newStatus = system.Normal
 					newFreq = normalFreq
 				} else if temp > t1 && temp <= t2 {
-					newState = "HOT-STATE"
+					newStatus = system.HotState
 					newFreq = fastFreq
 				} else {
-					newState = "ALARM"
+					newStatus = system.Alarm
 					newFreq = fastFreq
 					inAlarm = true
 				}
 			}
-			if newState != state.SystemStatus {
-				log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", newState, temp)
-				state.SystemStatus = newState
+			if newStatus != systemState.Status {
+				log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", newStatus, temp)
+				systemState.Status = newStatus
 
 			}
-			if newFreq != state.SamplingInterval {
+			if newFreq != systemState.SamplingInterval {
 				log.Printf("INFO: Frequenza di campionamento cambiata a %v", newFreq)
-				state.SamplingInterval = newFreq
-				intervalUpdatesChan <- state.SamplingInterval
+				systemState.SamplingInterval = newFreq
+				intervalUpdatesChan <- systemState.SamplingInterval
 			}
 
 		// Case per i dati in arrivo da Arduino.
 		case data := <-dataFromArduino:
-			if !state.DevicesOnline["arduino"] {
+			if !systemState.DevicesOnline["arduino"] {
 				log.Println("INFO: Dispositivo Arduino è ora ONLINE.")
-				state.DevicesOnline["arduino"] = true
+				systemState.DevicesOnline["arduino"] = true
 			}
 			arduinoTimer.Reset(arduinoTimeout)
-			state.WindowPosition = data.WindowPosition
+			systemState.WindowPosition = data.WindowPosition
 
 		// Case per l'invio periodico ad Arduino.
 		case <-arduinoTicker.C:
@@ -181,10 +181,10 @@ func stateManager(
 		// Timeout handlers
 		case <-esp32Timer.C:
 			log.Println("ATTENZIONE: Dispositivo ESP32 è andato OFFLINE (timeout).")
-			state.DevicesOnline["esp32"] = false
+			systemState.DevicesOnline["esp32"] = false
 		case <-arduinoTimer.C:
 			log.Println("ATTENZIONE: Dispositivo Arduino è andato OFFLINE (timeout).")
-			state.DevicesOnline["arduino"] = false
+			systemState.DevicesOnline["arduino"] = false
 		}
 	}
 }
@@ -192,11 +192,11 @@ func stateManager(
 func main() {
 	// --- Canali per la comunicazione tra goroutine ---
 	tempUpdatesChan := make(chan float64)
-	RequestChan := make(chan system.RequestType)
-	stateReqChan := make(chan chan system.SystemState)
-	intervalUpdatesChan := make(chan time.Duration)
-	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino)
+	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20)
 	dataToArduinoChan := make(chan arduinoserial.DataToArduino)
+	RequestChan := make(chan system.RequestType)
+	stateReqChan := make(chan chan system.System)
+	intervalUpdatesChan := make(chan time.Duration)
 
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
@@ -213,7 +213,7 @@ func main() {
 
 	err := mqtt.SubscribeToTopic(client, temperatureMessageHandler, tempTopic)
 	if err != nil {
-		log.Panic("ERRORE:Impossibile sottoscrivere il topic %s", tempTopic)
+		log.Panicf("ERRORE:Impossibile sottoscrivere il topic %s", tempTopic)
 	}
 
 	// --- Avvio delle Goroutine ---

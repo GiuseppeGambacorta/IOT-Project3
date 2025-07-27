@@ -20,7 +20,7 @@ type APIController interface {
 	GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
-func NewController(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) APIController {
+func NewController(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.System) APIController {
 	if useMock {
 		fmt.Println("INFO: Utilizzo del controller MOCK.")
 		return &MockController{}
@@ -36,12 +36,12 @@ func NewController(useMock bool, commandChan chan<- system.RequestType, stateReq
 
 type AppController struct {
 	commandChan  chan<- system.RequestType
-	stateReqChan chan<- chan system.SystemState
+	stateReqChan chan<- chan system.System
 }
 
 // getState è una funzione helper per ridurre la duplicazione di codice nelle richieste di lettura.
-func (c *AppController) getState() system.SystemState {
-	replyChan := make(chan system.SystemState)
+func (c *AppController) getState() system.System {
+	replyChan := make(chan system.System)
 	c.stateReqChan <- replyChan
 	return <-replyChan
 }
@@ -67,7 +67,7 @@ func (c *AppController) DevicesStates(w http.ResponseWriter, r *http.Request) {
 func (c *AppController) SystemStatus(w http.ResponseWriter, r *http.Request) {
 	state := c.getState()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": state.SystemStatus})
+	json.NewEncoder(w).Encode(map[string]string{"status": state.Status.String()})
 }
 
 func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
@@ -77,15 +77,15 @@ func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	isAlarmActive := state.SystemStatus == "ALARM"
+	systemState := c.getState()
+	isAlarmActive := systemState.Status == system.Alarm
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"attivo": isAlarmActive})
 }
 
 func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
 	state := c.getState()
-	isManual := state.OperativeMode == "MANUAL"
+	isManual := state.OperativeMode == system.Manual
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"manuale": isManual})
 }

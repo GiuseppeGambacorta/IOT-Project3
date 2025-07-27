@@ -22,7 +22,7 @@ func ConfigureClient(broker string) MQTT.Client {
 	opts := MQTT.NewClientOptions().AddBroker(broker).SetClientID("go-server-logic")
 	client := MQTT.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Fatalf("ERRORE: Impossibile connettersi al broker MQTT: %v", token.Error())
+		log.Printf("ERRORE: Impossibile connettersi al broker MQTT: %v", token.Error())
 		return nil
 	}
 	log.Println("INFO: Connesso al broker MQTT.")
