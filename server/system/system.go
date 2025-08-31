@@ -20,7 +20,8 @@ type SystemStatus int16
 
 const (
 	Normal SystemStatus = iota
-	HotState
+	Hot
+	Too_hot
 	Alarm
 )
 
@@ -28,8 +29,10 @@ func (ss SystemStatus) String() string { // cosi si aggiungono a mano
 	switch ss {
 	case Normal:
 		return "Normal"
-	case HotState:
-		return "HotState"
+	case Hot:
+		return "Hot"
+	case Too_hot:
+		return "Too_hot"
 	case Alarm:
 		return "Alarm"
 	default:
@@ -44,6 +47,7 @@ type SystemState struct {
 	MaxTemp          float64
 	MinTemp          float64
 	Status           SystemStatus
+	StatusString     string
 	SamplingInterval time.Duration
 	DevicesOnline    map[DeviceName]bool
 	WindowPosition   Degree

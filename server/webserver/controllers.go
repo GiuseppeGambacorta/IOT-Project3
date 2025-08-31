@@ -8,19 +8,14 @@ import (
 )
 
 type APIController interface {
-	TemperatureStats(w http.ResponseWriter, r *http.Request)
-	DevicesStates(w http.ResponseWriter, r *http.Request)
-	SystemStatus(w http.ResponseWriter, r *http.Request)
-	WindowPosition(w http.ResponseWriter, r *http.Request)
+	GetSystemStatus(w http.ResponseWriter, r *http.Request)
 	ChangeMode(w http.ResponseWriter, r *http.Request)
 	OpenWindow(w http.ResponseWriter, r *http.Request)
 	CloseWindow(w http.ResponseWriter, r *http.Request)
 	ResetAlarm(w http.ResponseWriter, r *http.Request)
-	GetAlarms(w http.ResponseWriter, r *http.Request)
-	GetOperativeMode(w http.ResponseWriter, r *http.Request)
 }
 
-func NewController(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.System) APIController {
+func NewController(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) APIController {
 	if useMock {
 		fmt.Println("INFO: Utilizzo del controller MOCK.")
 		return &MockController{}
@@ -36,58 +31,21 @@ func NewController(useMock bool, commandChan chan<- system.RequestType, stateReq
 
 type AppController struct {
 	commandChan  chan<- system.RequestType
-	stateReqChan chan<- chan system.System
+	stateReqChan chan<- chan system.SystemState
 }
 
 // getState è una funzione helper per ridurre la duplicazione di codice nelle richieste di lettura.
-func (c *AppController) getState() system.System {
-	replyChan := make(chan system.System)
+// crea un canale e lo invia tramite il canale di comunicazione, poi aspetto la risposta sul canale inviato,
+func (c *AppController) getState() system.SystemState {
+	replyChan := make(chan system.SystemState)
 	c.stateReqChan <- replyChan
 	return <-replyChan
 }
 
-func (c *AppController) TemperatureStats(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	stats := map[string]float64{
-		"current": state.CurrentTemp,
-		"average": state.AverageTemp,
-		"max":     state.MaxTemp,
-		"min":     state.MinTemp,
-	}
+func (c *AppController) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
+	actualSystemState := c.getState()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
-func (c *AppController) DevicesStates(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(state.DevicesOnline)
-}
-
-func (c *AppController) SystemStatus(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": state.Status.String()})
-}
-
-func (c *AppController) WindowPosition(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]system.Degree{"position": state.WindowPosition})
-}
-
-func (c *AppController) GetAlarms(w http.ResponseWriter, r *http.Request) {
-	systemState := c.getState()
-	isAlarmActive := systemState.Status == system.Alarm
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"attivo": isAlarmActive})
-}
-
-func (c *AppController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
-	state := c.getState()
-	isManual := state.OperativeMode == system.Manual
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"manuale": isManual})
+	json.NewEncoder(w).Encode(actualSystemState)
 }
 
 // --- Metodi di scrittura (modificati per usare commandChan) ---
@@ -135,28 +93,26 @@ func (c *AppController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 
 type MockController struct{}
 
-func (c *MockController) TemperatureStats(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta statistiche temperatura (MOCK)")
-	w.Header().Set("Content-Type", "application/json")
-	stats := map[string]float64{"current": 25.9, "average": 17.9, "max": 50.9, "min": 0.9}
-	json.NewEncoder(w).Encode(stats)
-}
+func (c *MockController) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
+	actualSystemState := system.SystemState{
+		Status:           system.Normal,
+		StatusString:     system.Normal.String(),
+		SamplingInterval: 100,
+		OperativeMode:    system.Automatic,
+		CurrentTemp:      25,
+		AverageTemp:      32,
+		MinTemp:          47,
+		MaxTemp:          12,
+		DevicesOnline: map[system.DeviceName]bool{
+			"server":  true,
+			"esp32":   false,
+			"arduino": false,
+		},
+	}
 
-func (c *MockController) DevicesStates(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta stato dispositivi (MOCK)")
-	w.Header().Set("Content-Type", "application/json")
-	states := map[string]bool{"server": true, "arduino": false, "esp32": true}
-	json.NewEncoder(w).Encode(states)
-}
-
-func (c *MockController) SystemStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Richiesta stato sistema (MOCK)")
-	w.Write([]byte("MOCK_STATUS"))
-}
-
-func (c *MockController) WindowPosition(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta posizione finestra (MOCK)")
-	w.Write([]byte("100"))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(actualSystemState)
 }
 
 func (c *MockController) ChangeMode(w http.ResponseWriter, r *http.Request) {
@@ -177,18 +133,4 @@ func (c *MockController) CloseWindow(w http.ResponseWriter, r *http.Request) {
 func (c *MockController) ResetAlarm(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Allarme resettato! (MOCK)")
 	w.Write([]byte("OK"))
-}
-
-func (c *MockController) GetAlarms(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta stato allarmi (MOCK)")
-	w.Header().Set("Content-Type", "application/json")
-	states := map[string]bool{"attivo": true}
-	json.NewEncoder(w).Encode(states)
-}
-
-func (c *MockController) GetOperativeMode(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Richiesta stato impianto (MOCK)")
-	w.Header().Set("Content-Type", "application/json")
-	states := map[string]bool{"manuale": true}
-	json.NewEncoder(w).Encode(states)
 }

@@ -20,19 +20,14 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func ApiServer(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.System) {
+func ApiServer(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) {
 	apiController := NewController(useMock, commandChan, stateReqChan)
 	routes := map[string]http.HandlerFunc{
-		"/api/temperature-stats":  apiController.TemperatureStats,
-		"/api/devices-states":     apiController.DevicesStates,
-		"/api/system-status":      apiController.SystemStatus,
-		"/api/window-position":    apiController.WindowPosition,
-		"/api/change-mode":        apiController.ChangeMode,
-		"/api/open-window":        apiController.OpenWindow,
-		"/api/close-window":       apiController.CloseWindow,
-		"/api/reset-alarm":        apiController.ResetAlarm,
-		"/api/get-alarms":         apiController.GetAlarms,
-		"/api/get-operative-mode": apiController.GetOperativeMode,
+		"/api/system-status": apiController.GetSystemStatus,
+		"/api/change-mode":   apiController.ChangeMode,
+		"/api/open-window":   apiController.OpenWindow,
+		"/api/close-window":  apiController.CloseWindow,
+		"/api/reset-alarm":   apiController.ResetAlarm,
 	}
 	for path, handler := range routes {
 		http.Handle(path, corsMiddleware(http.HandlerFunc(handler)))

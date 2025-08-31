@@ -5,6 +5,7 @@ import (
 	"math"
 	"server/mqtt"
 	"server/system"
+	"server/webserver"
 	"strconv"
 	"time"
 
@@ -213,7 +214,7 @@ func manageTemperature(temp float64, tempHistory []float64, actualSystemState *s
 
 }
 
-func systemManager(tempUpdatesChan <-chan float64) {
+func systemManager(tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState) {
 
 	const normalFreq time.Duration = 500 * time.Millisecond
 	const fastFreq time.Duration = 100 * time.Millisecond
@@ -222,6 +223,7 @@ func systemManager(tempUpdatesChan <-chan float64) {
 
 	actualSystemState := system.SystemState{
 		Status:           system.Normal,
+		StatusString:     system.Normal.String(),
 		SamplingInterval: normalFreq,
 		OperativeMode:    system.Automatic,
 		CurrentTemp:      0,
@@ -233,6 +235,7 @@ func systemManager(tempUpdatesChan <-chan float64) {
 			"esp32":   false,
 			"arduino": false,
 		},
+		WindowPosition: 0,
 	}
 
 	for {
@@ -243,6 +246,9 @@ func systemManager(tempUpdatesChan <-chan float64) {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
 				actualSystemState.DevicesOnline["esp32"] = true
 			}
+
+		case stateRequest := <-stateRequestChan:
+			stateRequest <- actualSystemState
 		default:
 		}
 
@@ -250,7 +256,7 @@ func systemManager(tempUpdatesChan <-chan float64) {
 }
 func main() {
 	/*
-		useMockApi := false
+		useMockApi :=
 		// --- Canali per la comunicazione tra goroutine ---
 		tempUpdatesChan := make(chan float64)
 		dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20)
@@ -284,8 +290,11 @@ func main() {
 		go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 	*/
 
-	tempUpdatesChan := make(chan float64)
+	useMockApi := true
 
+	tempUpdatesChan := make(chan float64)
+	requestChan := make(chan system.RequestType)
+	stateReqChan := make(chan chan system.SystemState)
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
 	const tempTopic = "esp32/data/temperature"
@@ -304,7 +313,8 @@ func main() {
 	if err != nil {
 		goto Error
 	}
-	go systemManager(tempUpdatesChan)
+	go systemManager(tempUpdatesChan, stateReqChan)
+	go webserver.ApiServer(useMockApi, requestChan, stateReqChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
 	select {}
