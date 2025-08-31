@@ -113,6 +113,7 @@ function createChartConfig(data) {
         data: data,
         options: {
             responsive: true,
+            animation: false,
             plugins: {
                 legend: {
                     display: false
@@ -121,6 +122,7 @@ function createChartConfig(data) {
         }
     };
 }
+
 
 function sendPostRequest(url) {
     fetch(url, {

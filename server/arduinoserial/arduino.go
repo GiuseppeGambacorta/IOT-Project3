@@ -30,9 +30,9 @@ type ArduinoReader struct {
 	conn     serial.Port
 	protocol *Protocol
 
-	Variables []*DataHeader
-	Debugs    []*DataHeader
-	Events    []*DataHeader
+	Variables []*Message
+	Debugs    []*Message
+	Events    []*Message
 }
 
 func NewArduinoReader(baudrate int, timeout time.Duration) *ArduinoReader {
@@ -50,7 +50,7 @@ func (ar *ArduinoReader) findArduinoPort() (string, error) {
 	if len(ports) == 0 {
 		return "", fmt.Errorf("nessuna porta seriale trovata")
 	}
-	return ports[0], nil
+	return ports[1], nil
 }
 
 func (ar *ArduinoReader) Connect() error {
@@ -87,7 +87,7 @@ func (ar *ArduinoReader) Disconnect() {
 	}
 }
 
-func (ar *ArduinoReader) ReadData() (vars []*DataHeader, debugs []*DataHeader, events []*DataHeader, err error) {
+func (ar *ArduinoReader) ReadData() (vars []*Message, debugs []*Message, events []*Message, err error) {
 	if ar.conn == nil {
 		return nil, nil, nil, fmt.Errorf("connessione seriale non aperta")
 	}

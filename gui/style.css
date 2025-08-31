@@ -143,7 +143,7 @@ footer {
 /* #region Stati e Animazioni */
 .offline {
     color: red !important;
-    animation: blink 1s steps(2, start) infinite;
+   
 }
 
 .online {

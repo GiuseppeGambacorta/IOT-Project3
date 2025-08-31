@@ -190,6 +190,8 @@ func stateManager(
 }
 
 func main() {
+
+	useMockApi := false
 	// --- Canali per la comunicazione tra goroutine ---
 	tempUpdatesChan := make(chan float64)
 	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20)
@@ -218,7 +220,7 @@ func main() {
 
 	// --- Avvio delle Goroutine ---
 	go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
-	go webserver.ApiServer(RequestChan, stateReqChan)
+	go webserver.ApiServer(useMockApi, RequestChan, stateReqChan)
 	go mqtt.MqttPublisher(client, intervalUpdatesChan)
 	go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 

@@ -24,7 +24,7 @@ const (
 	Float  VarType = 3
 )
 
-type DataHeader struct {
+type Message struct {
 	MessageType MessageType
 	VarType     VarType
 	ID          byte
@@ -100,7 +100,7 @@ func (p *Protocol) ReadCommunicationData() (int, error) {
 	return int(numMessages), nil
 }
 
-func (p *Protocol) ReadMessage() (*DataHeader, error) {
+func (p *Protocol) ReadMessage() (*Message, error) {
 	msgType, err := p.readByte()
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (p *Protocol) ReadMessage() (*DataHeader, error) {
 		return nil, fmt.Errorf("impossibile leggere il payload completo: %w", err)
 	}
 
-	header := &DataHeader{
+	header := &Message{
 		MessageType: MessageType(msgType),
 		VarType:     VarType(varType),
 		ID:          id,
