@@ -214,10 +214,13 @@ func manageTemperature(temp float64, tempHistory []float64, actualSystemState *s
 
 }
 
-func systemManager(tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState) {
+func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState) {
 
 	const normalFreq time.Duration = 500 * time.Millisecond
 	const fastFreq time.Duration = 100 * time.Millisecond
+
+	const esp32TimeoutTime = 1 * time.Second
+	esp32TimeoutTimer := time.NewTimer(esp32TimeoutTime)
 
 	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
 
@@ -241,6 +244,8 @@ func systemManager(tempUpdatesChan <-chan float64, stateRequestChan <-chan chan 
 	for {
 		select {
 		case temp := <-tempUpdatesChan:
+			esp32TimeoutTimer.Reset(esp32TimeoutTime)
+
 			tempHistory = manageTemperature(temp, tempHistory, &actualSystemState)
 			if !actualSystemState.DevicesOnline["esp32"] {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
@@ -249,6 +254,16 @@ func systemManager(tempUpdatesChan <-chan float64, stateRequestChan <-chan chan 
 
 		case stateRequest := <-stateRequestChan:
 			stateRequest <- actualSystemState
+
+		case <-esp32TimeoutTimer.C:
+			esp32TimeoutTimer.Reset(esp32TimeoutTime)
+			if actualSystemState.DevicesOnline["esp32"] {
+				log.Println("ATTENZIONE: Dispositivo ESP32 è andato OFFLINE (timeout).")
+				actualSystemState.DevicesOnline["esp32"] = false
+			} else {
+				intervalUpdatesChan <- actualSystemState.SamplingInterval // aggiorno la frequenza, in modo che esp32 si possa ricollegare
+			}
+
 		}
 
 	}
@@ -289,8 +304,9 @@ func main() {
 		go arduinoserial.MansageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 	*/
 
-	useMockApi := true
+	useMockApi := false
 
+	intervalUpdatesChan := make(chan time.Duration)
 	tempUpdatesChan := make(chan float64)
 	requestChan := make(chan system.RequestType)
 	stateReqChan := make(chan chan system.SystemState)
@@ -312,7 +328,8 @@ func main() {
 	if err != nil {
 		goto Error
 	}
-	go systemManager(tempUpdatesChan, stateReqChan)
+	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateReqChan)
+	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
 	go webserver.ApiServer(useMockApi, requestChan, stateReqChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
