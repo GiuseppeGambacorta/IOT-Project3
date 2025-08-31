@@ -28,13 +28,13 @@ const (
 func (ss SystemStatus) String() string { // cosi si aggiungono a mano
 	switch ss {
 	case Normal:
-		return "Normal"
+		return "NORMAL"
 	case Hot:
-		return "Hot"
+		return "HOT"
 	case Too_hot:
-		return "Too_hot"
+		return "TOO-HOT"
 	case Alarm:
-		return "Alarm"
+		return "ALARM"
 	default:
 		return ""
 	}

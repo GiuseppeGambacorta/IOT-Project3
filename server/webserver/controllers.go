@@ -35,7 +35,7 @@ type AppController struct {
 }
 
 // getState è una funzione helper per ridurre la duplicazione di codice nelle richieste di lettura.
-// crea un canale e lo invia tramite il canale di comunicazione, poi aspetto la risposta sul canale inviato,
+// crea un canale e lo invia tramite il canale di comunicazione, poi aspetto la risposta sul canale inviato, async/await
 func (c *AppController) getState() system.SystemState {
 	replyChan := make(chan system.SystemState)
 	c.stateReqChan <- replyChan

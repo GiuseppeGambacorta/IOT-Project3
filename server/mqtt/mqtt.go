@@ -18,23 +18,35 @@ func MqttPublishInterval(client MQTT.Client, IntervalUpdatesChan <-chan time.Dur
 	}
 }
 
-func ConfigureClient(broker string) MQTT.Client {
-	opts := MQTT.NewClientOptions().AddBroker(broker).SetClientID("go-server-logic")
+func ConfigureClient(broker string, clientID string, onConnectCallbacks ...func(MQTT.Client)) (MQTT.Client, error) {
+	opts := MQTT.NewClientOptions()
+	opts.AddBroker(broker)
+	opts.SetClientID(clientID)
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	opts.SetConnectRetryInterval(2 * time.Second)
+	opts.SetKeepAlive(30 * time.Second)
+	opts.SetPingTimeout(10 * time.Second)
+	opts.SetCleanSession(true)
+
+	// Log di connessione/disconnessione
+	opts.OnConnect = func(c MQTT.Client) {
+		log.Println("MQTT: connesso al broker.")
+		for _, callback := range onConnectCallbacks {
+			callback(c)
+		}
+	}
+	opts.OnConnectionLost = func(c MQTT.Client, err error) {
+		log.Printf("MQTT: connessione persa: %v", err)
+	}
+	opts.OnReconnecting = func(c MQTT.Client, opts *MQTT.ClientOptions) {
+		log.Println("MQTT: tentativo di riconnessione...")
+	}
+
 	client := MQTT.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Printf("ERRORE: Impossibile connettersi al broker MQTT: %v", token.Error())
-		return nil
+	token := client.Connect()
+	if token.Wait() && token.Error() != nil {
+		return nil, token.Error()
 	}
-	log.Println("INFO: Connesso al broker MQTT.")
-	return client
-}
-
-func SubscribeToTopic(client MQTT.Client, messageHandler MQTT.MessageHandler, topic string) error {
-
-	if token := client.Subscribe(topic, 1, messageHandler); token.Wait() && token.Error() != nil {
-		log.Fatalf("ERRORE: Impossibile sottoscriversi al topic %s: %v", topic, token.Error())
-		return token.Error()
-	}
-	log.Printf("INFO: Sottoscritto con successo al topic: %s\n", topic)
-	return nil
+	return client, nil
 }

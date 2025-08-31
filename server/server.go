@@ -211,16 +211,67 @@ func manageTemperature(temp float64, tempHistory []float64, actualSystemState *s
 	actualSystemState.CurrentTemp = temp
 	actualSystemState.AverageTemp = sum / float64(len(tempHistory))
 	return tempHistory
+}
 
+func manageSystemLogic(
+	actualSystemState *system.SystemState,
+	threshold1, threshold2 float64,
+	normalFreq, fastFreq time.Duration,
+	intervalUpdatesChan chan<- time.Duration,
+	tooHotEnteredAt *time.Time,
+	tooHotMaxDuration time.Duration,
+) {
+	oldStatus := actualSystemState.Status
+	oldFreq := actualSystemState.SamplingInterval
+	now := time.Now()
+
+	if actualSystemState.Status != system.Alarm {
+		if actualSystemState.CurrentTemp <= threshold1 {
+			actualSystemState.Status = system.Normal
+			actualSystemState.SamplingInterval = normalFreq
+			*tooHotEnteredAt = time.Time{}
+		} else if actualSystemState.CurrentTemp > threshold1 && actualSystemState.CurrentTemp <= threshold2 {
+			actualSystemState.Status = system.Hot
+			actualSystemState.SamplingInterval = fastFreq
+			*tooHotEnteredAt = time.Time{}
+		} else {
+			actualSystemState.Status = system.Too_hot
+			actualSystemState.SamplingInterval = fastFreq
+			if tooHotEnteredAt.IsZero() {
+				*tooHotEnteredAt = now
+			}
+			if !tooHotEnteredAt.IsZero() && now.Sub(*tooHotEnteredAt) > tooHotMaxDuration {
+				actualSystemState.Status = system.Alarm
+				log.Println("ALLARME: Temperatura troppo alta per troppo tempo! Stato -> Alarm")
+				*tooHotEnteredAt = time.Time{}
+			}
+		}
+	}
+
+	if actualSystemState.Status != oldStatus {
+		log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", actualSystemState.Status.String(), actualSystemState.CurrentTemp)
+		actualSystemState.StatusString = actualSystemState.Status.String()
+	}
+	if actualSystemState.SamplingInterval != oldFreq {
+		log.Printf("INFO: Frequenza di campionamento cambiata a %v", actualSystemState.SamplingInterval)
+		intervalUpdatesChan <- actualSystemState.SamplingInterval
+	}
 }
 
 func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState) {
 
-	const normalFreq time.Duration = 500 * time.Millisecond
-	const fastFreq time.Duration = 100 * time.Millisecond
+	const (
+		normalFreq time.Duration = 500 * time.Millisecond
+		fastFreq   time.Duration = 100 * time.Millisecond
+		threshold1 float64       = 50
+		threshold2 float64       = 70
 
-	const esp32TimeoutTime = 1 * time.Second
+		esp32TimeoutTime  = 2 * time.Second
+		tooHotMaxDuration = 10 * time.Second
+	)
+
 	esp32TimeoutTimer := time.NewTimer(esp32TimeoutTime)
+	var tooHotEnteredAt time.Time
 
 	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
 
@@ -245,12 +296,21 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 		select {
 		case temp := <-tempUpdatesChan:
 			esp32TimeoutTimer.Reset(esp32TimeoutTime)
-
-			tempHistory = manageTemperature(temp, tempHistory, &actualSystemState)
 			if !actualSystemState.DevicesOnline["esp32"] {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
 				actualSystemState.DevicesOnline["esp32"] = true
 			}
+
+			tempHistory = manageTemperature(temp, tempHistory, &actualSystemState)
+
+			manageSystemLogic(
+				&actualSystemState,
+				threshold1, threshold2,
+				normalFreq, fastFreq,
+				intervalUpdatesChan,
+				&tooHotEnteredAt,
+				tooHotMaxDuration,
+			)
 
 		case stateRequest := <-stateRequestChan:
 			stateRequest <- actualSystemState
@@ -312,8 +372,8 @@ func main() {
 	stateReqChan := make(chan chan system.SystemState)
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
+	const cliendID = "iot-server"
 	const tempTopic = "esp32/data/temperature"
-	client := mqtt.ConfigureClient(broker)
 
 	// --- Handler per i messaggi di temperatura ---
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
@@ -321,13 +381,22 @@ func main() {
 		if err == nil {
 			log.Printf("Readed temperature:%f", temp)
 			tempUpdatesChan <- temp
+		} else {
+			log.Println("errore lettura temperatura")
 		}
 	}
 
-	err := mqtt.SubscribeToTopic(client, temperatureMessageHandler, tempTopic)
+	client, err := mqtt.ConfigureClient(broker, cliendID,
+		func(c MQTT.Client) {
+			if token := c.Subscribe("esp32/data/temperature", 1, temperatureMessageHandler); token.Wait() && token.Error() != nil {
+				log.Printf("MQTT: errore nella risottoscrizione: %v", token.Error())
+			}
+		})
+
 	if err != nil {
 		goto Error
 	}
+
 	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateReqChan)
 	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
 	go webserver.ApiServer(useMockApi, requestChan, stateReqChan)
