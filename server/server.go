@@ -3,18 +3,20 @@ package main
 import (
 	"log"
 	"math"
-	"strconv"
-
-	"server/arduinoserial"
 	"server/mqtt"
 	"server/system"
-	"server/webserver"
+	"strconv"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
+const (
+	MaxTemperatureBuffer = 100
+)
+
 // stateManager è la goroutine centrale che gestisce lo stato dell'applicazione.
+/*
 func stateManager(
 	tempUpdatesChan <-chan float64,
 	commandChan <-chan system.RequestType,
@@ -188,17 +190,101 @@ func stateManager(
 		}
 	}
 }
+*/
 
+func manageTemperature(temp float64, tempHistory []float64, actualSystemState *system.SystemState) []float64 {
+	tempHistory = append(tempHistory, temp)
+	if len(tempHistory) > MaxTemperatureBuffer {
+		tempHistory = tempHistory[1:]
+	}
+	var sum float64
+	for _, t := range tempHistory {
+		sum += t
+		if t < actualSystemState.MinTemp {
+			actualSystemState.MinTemp = t
+		}
+		if t > actualSystemState.MaxTemp {
+			actualSystemState.MaxTemp = t
+		}
+	}
+	actualSystemState.CurrentTemp = temp
+	actualSystemState.AverageTemp = sum / float64(len(tempHistory))
+	return tempHistory
+
+}
+
+func systemManager(tempUpdatesChan <-chan float64) {
+
+	const normalFreq time.Duration = 500 * time.Millisecond
+	const fastFreq time.Duration = 100 * time.Millisecond
+
+	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
+
+	actualSystemState := system.SystemState{
+		Status:           system.Normal,
+		SamplingInterval: normalFreq,
+		OperativeMode:    system.Automatic,
+		CurrentTemp:      0,
+		AverageTemp:      0,
+		MinTemp:          math.Inf(1),
+		MaxTemp:          math.Inf(-1),
+		DevicesOnline: map[system.DeviceName]bool{
+			"server":  true,
+			"esp32":   false,
+			"arduino": false,
+		},
+	}
+
+	for {
+		select {
+		case temp := <-tempUpdatesChan:
+			tempHistory = manageTemperature(temp, tempHistory, &actualSystemState)
+			if !actualSystemState.DevicesOnline["esp32"] {
+				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
+				actualSystemState.DevicesOnline["esp32"] = true
+			}
+		default:
+		}
+
+	}
+}
 func main() {
+	/*
+		useMockApi := false
+		// --- Canali per la comunicazione tra goroutine ---
+		tempUpdatesChan := make(chan float64)
+		dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20)
+		dataToArduinoChan := make(chan arduinoserial.DataToArduino)
+		RequestChan := make(chan system.RequestType)
+		stateReqChan := make(chan chan system.System)
+		intervalUpdatesChan := make(chan time.Duration)
 
-	useMockApi := false
-	// --- Canali per la comunicazione tra goroutine ---
+		// --- Configurazione e connessione MQTT ---
+		const broker = "tcp://localhost:1883"
+		const tempTopic = "esp32/data/temperature"
+		client := mqtt.ConfigureClient(broker)
+
+		// --- Handler per i messaggi di temperatura ---
+		var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
+			temp, err := strconv.ParseFloat(string(msg.Payload()), 64)
+			if err == nil {
+				tempUpdatesChan <- temp
+			}
+		}
+
+		err := mqtt.SubscribeToTopic(client, temperatureMessageHandler, tempTopic)
+		if err != nil {
+			goto Error
+		}
+
+		// --- Avvio delle Goroutine ---
+		go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
+		go webserver.ApiServer(useMockApi, RequestChan, stateReqChan)
+		go mqtt.MqttPublisher(client, intervalUpdatesChan)
+		go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
+	*/
+
 	tempUpdatesChan := make(chan float64)
-	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20)
-	dataToArduinoChan := make(chan arduinoserial.DataToArduino)
-	RequestChan := make(chan system.RequestType)
-	stateReqChan := make(chan chan system.System)
-	intervalUpdatesChan := make(chan time.Duration)
 
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
@@ -209,6 +295,7 @@ func main() {
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
 		temp, err := strconv.ParseFloat(string(msg.Payload()), 64)
 		if err == nil {
+			log.Printf("Readed temperature:%f", temp)
 			tempUpdatesChan <- temp
 		}
 	}
@@ -217,14 +304,9 @@ func main() {
 	if err != nil {
 		goto Error
 	}
-
-	// --- Avvio delle Goroutine ---
-	go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
-	go webserver.ApiServer(useMockApi, RequestChan, stateReqChan)
-	go mqtt.MqttPublisher(client, intervalUpdatesChan)
-	go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
-
+	go systemManager(tempUpdatesChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
+
 	select {}
 
 Error:

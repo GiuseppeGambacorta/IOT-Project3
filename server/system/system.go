@@ -38,7 +38,7 @@ func (ss SystemStatus) String() string { // cosi si aggiungono a mano
 }
 
 // System rimane invariato.
-type System struct {
+type SystemState struct {
 	CurrentTemp      float64
 	AverageTemp      float64
 	MaxTemp          float64
