@@ -249,7 +249,6 @@ func systemManager(tempUpdatesChan <-chan float64, stateRequestChan <-chan chan 
 
 		case stateRequest := <-stateRequestChan:
 			stateRequest <- actualSystemState
-		default:
 		}
 
 	}
@@ -287,7 +286,7 @@ func main() {
 		go stateManager(tempUpdatesChan, RequestChan, stateReqChan, intervalUpdatesChan, dataFromArduinoChan, dataToArduinoChan)
 		go webserver.ApiServer(useMockApi, RequestChan, stateReqChan)
 		go mqtt.MqttPublisher(client, intervalUpdatesChan)
-		go arduinoserial.ManageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
+		go arduinoserial.MansageArduino(RequestChan, dataFromArduinoChan, dataToArduinoChan)
 	*/
 
 	useMockApi := true
