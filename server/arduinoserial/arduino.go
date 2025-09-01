@@ -15,7 +15,7 @@ import (
 
 type DataFromArduino struct {
 	WindowPosition system.Degree
-	buttonPressed  bool
+	ButtonPressed  bool
 }
 
 type DataToArduino struct {
@@ -66,8 +66,6 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 			arduino.AddDataToSend(4, byteToSend)
 			if err := arduino.WriteData(); err != nil {
 				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
-			} else {
-				log.Printf("Dati inviati correttamente ad arduino")
 			}
 		}
 	}()
@@ -86,25 +84,25 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 			continue
 		}
 
-		buttonState, ok1 := vars[0].Data.(int16)
+		buttonValue, ok1 := vars[0].Data.(int16)
 		windowPos, ok2 := vars[1].Data.(int16)
 		if !ok1 || !ok2 {
 			log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
 			continue
 		}
 
-		newData := DataFromArduino{WindowPosition: system.Degree(windowPos), buttonPressed: bool(buttonState == 1)}
-
+		buttonPressed := buttonValue == 1
+		buttonTrig := false
 		// Rileva il fronte di salita del pulsante per inviare un solo comando
-		if newData.buttonPressed && !wasButtonPressed {
-			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
+		if buttonPressed && !wasButtonPressed {
+			buttonTrig = true
 		}
-		wasButtonPressed = newData.buttonPressed
-		log.Println("dati arrivati")
+		wasButtonPressed = buttonPressed
+
+		newData := DataFromArduino{WindowPosition: system.Degree(windowPos), ButtonPressed: buttonTrig}
 
 		select {
 		case dataFromArduino <- newData:
-			log.Println(newData.WindowPosition)
 
 		default:
 			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock facendo cosi

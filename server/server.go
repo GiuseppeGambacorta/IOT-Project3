@@ -194,6 +194,16 @@ func stateManager(
 }
 */
 
+func toggleMode(actualSystemState *system.SystemState) {
+	if actualSystemState.OperativeMode == system.Manual {
+		actualSystemState.OperativeMode = system.Automatic
+	} else {
+		actualSystemState.OperativeMode = system.Manual
+	}
+	actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
+	log.Println("Modalita attuale: " + actualSystemState.OperativeModeString)
+}
+
 func manageTemperature(temp float64, tempHistory []float64, actualSystemState *system.SystemState) []float64 {
 	tempHistory = append(tempHistory, temp)
 	if len(tempHistory) > MaxTemperatureBuffer {
@@ -230,14 +240,17 @@ func manageSystemLogic(
 		if actualSystemState.CurrentTemp <= threshold1 {
 			actualSystemState.Status = system.Normal
 			actualSystemState.SamplingInterval = normalFreq
+			actualSystemState.WindowPosition = 0
 			*tooHotEnteredAt = time.Time{}
 		} else if actualSystemState.CurrentTemp > threshold1 && actualSystemState.CurrentTemp <= threshold2 {
 			actualSystemState.Status = system.Hot
 			actualSystemState.SamplingInterval = fastFreq
+			actualSystemState.WindowPosition = system.Degree((actualSystemState.CurrentTemp - threshold1) * (threshold2 / (threshold2 - threshold1)))
 			*tooHotEnteredAt = time.Time{}
 		} else {
 			actualSystemState.Status = system.Too_hot
 			actualSystemState.SamplingInterval = fastFreq
+			actualSystemState.WindowPosition = 90
 			if tooHotEnteredAt.IsZero() {
 				*tooHotEnteredAt = now
 			}
@@ -264,12 +277,13 @@ func systemManager(
 	tempUpdatesChan <-chan float64,
 	stateRequestChan <-chan chan system.SystemState,
 	commandRequestChan <-chan system.RequestType,
-	dataToArduinoChan chan arduinoserial.DataToArduino) {
+	dataToArduinoChan chan arduinoserial.DataToArduino,
+	dataFromArduinoChan <-chan arduinoserial.DataFromArduino) {
 
 	const (
 		normalFreq time.Duration = 500 * time.Millisecond
 		fastFreq   time.Duration = 100 * time.Millisecond
-		threshold1 float64       = 50
+		threshold1 float64       = 30
 		threshold2 float64       = 70
 
 		esp32TimeoutTime  = 2 * time.Second
@@ -328,16 +342,9 @@ func systemManager(
 			stateRequest <- actualSystemState
 
 		case commandRequest := <-commandRequestChan:
-			log.Println(commandRequest.String())
 			switch commandRequest {
 			case system.ToggleMode:
-				if actualSystemState.OperativeMode == system.Manual {
-					actualSystemState.OperativeMode = system.Automatic
-				} else {
-					actualSystemState.OperativeMode = system.Manual
-				}
-				actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
-				log.Println("Modalita attuale: " + actualSystemState.OperativeModeString)
+				toggleMode(&actualSystemState)
 			case system.OpenWindow:
 				if actualSystemState.OperativeMode == system.Manual {
 					windowManualCommand = 1
@@ -360,6 +367,13 @@ func systemManager(
 				log.Println("Comando sconosciuto")
 			}
 
+		case data := <-dataFromArduinoChan:
+			actualSystemState.WindowPosition = data.WindowPosition
+			if data.ButtonPressed {
+				toggleMode(&actualSystemState)
+			}
+			actualSystemState.DevicesOnline["arduino"] = true
+
 		case <-arduinoTimer.C:
 			arduinoTimer.Reset(arduinoSerialFreq)
 			newData := arduinoserial.DataToArduino{
@@ -369,6 +383,7 @@ func systemManager(
 				SystemState:          int(actualSystemState.Status),
 				SystemWindowPosition: actualSystemState.WindowPosition,
 			}
+			windowManualCommand = 0
 			select {
 			case dataToArduinoChan <- newData:
 				windowManualCommand = 0
@@ -447,7 +462,7 @@ func main() {
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
 		temp, err := strconv.ParseFloat(string(msg.Payload()), 64)
 		if err == nil {
-			log.Printf("Readed temperature:%f", temp)
+
 			tempUpdatesChan <- temp
 		} else {
 			log.Println("errore lettura temperatura")
@@ -465,7 +480,7 @@ func main() {
 		goto Error
 	}
 
-	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan)
+	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan, dataFromArduinoChan)
 	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
 	go webserver.ApiServer(useMockApi, commandRequestChan, stateRequestChan)
 	go arduinoserial.ManageArduino(dataFromArduinoChan, dataToArduinoChan)

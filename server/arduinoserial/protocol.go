@@ -188,8 +188,6 @@ func (p *Protocol) SendBuffer() error {
 
 	//finalPacket := append(header, p.dataToSend...)
 
-	fmt.Printf("var inviate: %d\n", p.numVarsToSend)
-
 	_, err := p.conn.Write(p.dataToSend)
 
 	p.dataToSend = p.dataToSend[:0]

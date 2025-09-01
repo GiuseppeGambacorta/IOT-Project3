@@ -16,7 +16,6 @@ WindowControllerTask::WindowControllerTask(
 {
 
     
-
     serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
     serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
 }
@@ -33,51 +32,53 @@ void WindowControllerTask::tick()
     buttonTrigger.update(manualButton.isActive());
 
     if (buttonTrigger.isActive()){
-        oldState = actualState;
+        oldMode = actualMode;
         manualButtonPressed = 1;
     } 
 
-    if (actualState != oldState){
+    if (actualMode != oldMode){
         manualButtonPressed = 0;
     }
     
-
-   char msg[32]; // Buffer per il messaggio
+    char msg[4 * 20];
 
     const char* modeStr;
     switch (actualMode)
     {
     case AUTOMATIC:
-        modeStr = "Auto";
+        modeStr = "Automatic";
         motor.setPosition(systemWindowPos);
+        snprintf(msg, sizeof(msg), "Position:%d\nModality:%s\0", motor.getPosition(), modeStr);
         break;
     case MANUAL:
         modeStr = "Manual";
-        switch (windowcommand)
-        {
-        case UP:
-            motor.setPosition(motor.getPosition() + 5);
-            break;
-        case DOWN:
-            motor.setPosition(motor.getPosition() - 5);
-            break;
-        case NONE:
-            motor.setPosition(motor.getPosition());
-            break;
-        default:
-            break;
-        }
+
+        if (windowcommand != oldCommand) {
+            switch (windowcommand)
+            {
+            case UP:
+                motor.setPosition(motor.getPosition() + 5);
+                break;
+            case DOWN:
+                motor.setPosition(motor.getPosition() - 5);
+                break;
+            default:
+                motor.setPosition(motor.getPosition());
+                break;
+            }
+            oldCommand = windowcommand;
+    }
+        snprintf(msg, sizeof(msg), "Position:%d\nModality:%s\nTemperature:%d\0", motor.getPosition(), modeStr, temperature);
         break;
     default:
-        modeStr = "Sconosciuta";
-        motor.setPosition(systemWindowPos);
+        modeStr = "Unknown";
+        snprintf(msg, sizeof(msg), "Position:%d\nModality:%s\0", motor.getPosition(), modeStr);
         break;
     }
-    //actualState = WindowManagerState(56);
-    snprintf(msg, sizeof(msg), "Posizione:%d, Mod:%d", motor.getPosition(), WindowManagerState(*serialManager.getvar(3)));
-    display.write(msg);
+        display.write(msg);
+        actualWindowPosition =motor.getPosition();
 
-    // ...existing code...
+
 }
 
 void WindowControllerTask::reset()

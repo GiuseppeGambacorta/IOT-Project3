@@ -33,11 +33,36 @@ void Display::clear() {
 
 void Display::update() {
 
-    if (this->currentMessage == this->oldMessage) {
+  if (this->currentMessage == this->oldMessage) {
         return;
     }
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print(this->currentMessage);
+
+    int col = 0;
+    int row = 0;
+    for (unsigned int i = 0; i < this->currentMessage.length(); i++) {
+        char c = this->currentMessage[i];
+        if (c =='\0'){
+            break;
+        }
+        if (c == '\n') {
+            row++;
+            col = 0;
+            lcd.setCursor(col, row);
+        } else {
+            lcd.print(c);
+            col++;
+            if (col >= columns) {
+                col = 0;
+                row++;
+                lcd.setCursor(col, row);
+            }
+        }
+        if (row >= rows){
+            break;
+        }
+    }
+
     this->oldMessage = this->currentMessage;
 }

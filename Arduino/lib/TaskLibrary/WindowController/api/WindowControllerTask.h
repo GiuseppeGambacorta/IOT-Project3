@@ -9,8 +9,8 @@
 
 
 enum WindowManagerMode : int16_t {
-    AUTOMATIC = 0,
-    MANUAL = 1
+    MANUAL = 0,
+    AUTOMATIC = 1
 };
 
 enum WindowManagerState : int16_t {
@@ -31,7 +31,9 @@ class WindowControllerTask : public Task {
 
 private:
 
+    WindowManagerMode oldMode;
     WindowManagerState oldState = NORMAL;
+    windowManualCommand oldCommand;
     AnalogInput& potentiometer;
     DigitalInput& manualButton;
     Motor& motor;
@@ -42,7 +44,7 @@ private:
 
     int16_t temperature;
     WindowManagerMode actualMode;
-    windowManualCommand windowcommand;
+    windowManualCommand& windowcommand;
     WindowManagerState actualState;
     int16_t systemWindowPos;
 
