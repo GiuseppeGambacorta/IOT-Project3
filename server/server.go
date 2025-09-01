@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"math"
+	"server/arduinoserial"
 	"server/mqtt"
 	"server/system"
 	"server/webserver"
@@ -219,8 +220,8 @@ func manageSystemLogic(
 	normalFreq, fastFreq time.Duration,
 	intervalUpdatesChan chan<- time.Duration,
 	tooHotEnteredAt *time.Time,
-	tooHotMaxDuration time.Duration,
-) {
+	tooHotMaxDuration time.Duration) {
+
 	oldStatus := actualSystemState.Status
 	oldFreq := actualSystemState.SamplingInterval
 	now := time.Now()
@@ -258,7 +259,12 @@ func manageSystemLogic(
 	}
 }
 
-func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState, commandRequestChan <-chan system.RequestType) {
+func systemManager(
+	intervalUpdatesChan chan<- time.Duration,
+	tempUpdatesChan <-chan float64,
+	stateRequestChan <-chan chan system.SystemState,
+	commandRequestChan <-chan system.RequestType,
+	dataToArduinoChan chan arduinoserial.DataToArduino) {
 
 	const (
 		normalFreq time.Duration = 500 * time.Millisecond
@@ -268,12 +274,17 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 
 		esp32TimeoutTime  = 2 * time.Second
 		tooHotMaxDuration = 10 * time.Second
+
+		arduinoSerialFreq = 100 * time.Millisecond
 	)
 
 	esp32TimeoutTimer := time.NewTimer(esp32TimeoutTime)
+	arduinoTimer := time.NewTimer(arduinoSerialFreq)
 	var tooHotEnteredAt time.Time
 
 	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
+
+	windowManualCommand := 0
 
 	actualSystemState := system.SystemState{
 		Status:              system.Normal,
@@ -328,9 +339,17 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 				actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
 				log.Println("Modalita attuale: " + actualSystemState.OperativeModeString)
 			case system.OpenWindow:
-				// Azione per apertura finestra
+				if actualSystemState.OperativeMode == system.Manual {
+					windowManualCommand = 1
+				} else {
+					windowManualCommand = 0
+				}
 			case system.CloseWindow:
-				// Azione per chiusura finestra
+				if actualSystemState.OperativeMode == system.Manual {
+					windowManualCommand = 2
+				} else {
+					windowManualCommand = 0
+				}
 			case system.ResetAlarm:
 				if actualSystemState.Status == system.Alarm {
 					if actualSystemState.CurrentTemp < threshold2 {
@@ -339,6 +358,24 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 				}
 			default:
 				log.Println("Comando sconosciuto")
+			}
+
+		case <-arduinoTimer.C:
+			newData := arduinoserial.DataToArduino{
+				Temperature:          int(actualSystemState.CurrentTemp),
+				OperativeMode:        int(actualSystemState.OperativeMode),
+				WindowAction:         windowManualCommand,
+				SystemState:          int(actualSystemState.Status),
+				SystemWindowPosition: actualSystemState.WindowPosition,
+			}
+			select {
+			case dataToArduinoChan <- newData:
+				windowManualCommand = 0
+
+			default:
+				<-dataToArduinoChan
+				dataToArduinoChan <- newData
+				log.Println("WARN: Buffer dati per Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
 			}
 
 		case <-esp32TimeoutTimer.C:
@@ -397,6 +434,9 @@ func main() {
 	commandRequestChan := make(chan system.RequestType)
 	stateRequestChan := make(chan chan system.SystemState)
 
+	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20) //buffered chan, se e piena, faccio lo shift dei dati
+	dataToArduinoChan := make(chan arduinoserial.DataToArduino, 1)      // buffered chan, se e piena, scarto il vecchio comando e metto quello nuovo
+
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
 	const cliendID = "iot-server"
@@ -424,9 +464,10 @@ func main() {
 		goto Error
 	}
 
-	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan)
+	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan)
 	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
 	go webserver.ApiServer(useMockApi, commandRequestChan, stateRequestChan)
+	go arduinoserial.ManageArduino(dataFromArduinoChan, dataToArduinoChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
 	select {}

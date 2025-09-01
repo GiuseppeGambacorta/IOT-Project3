@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"time"
+
+	"github.com/tarm/serial"
 )
 
 type MessageType byte
@@ -46,39 +49,59 @@ func NewProtocol(conn io.ReadWriteCloser) *Protocol {
 	}
 }
 
-// send a 255 byte handshake to Arduino and wait for a response, the responde should be a byte 10
-func (p *Protocol) Handshake() error {
-	buf := make([]byte, 1)
-	for {
-		fmt.Println("Aspetto che Arduino si connetta...")
+// send a 255 byte handshake to Arduino and wait for a response, the responde should be a byte=10
+func Handshake(portName string, baudrate int, readTimeout time.Duration) (io.ReadWriteCloser, error) {
+	// Configura la porta seriale (modifica Baud se necessario)
+	config := &serial.Config{
+		Name:        portName,
+		Baud:        baudrate,
+		ReadTimeout: readTimeout,
+	}
+	conn, err := serial.OpenPort(config)
+	if err != nil {
+		return nil, fmt.Errorf("errore apertura porta seriale: %w", err)
+	}
 
-		if _, err := p.conn.Write([]byte{255}); err != nil {
-			return fmt.Errorf("errore durante la scrittura per l'handshake: %w", err)
+	buf := make([]byte, 1)
+	cycleCount := 0
+	for {
+		fmt.Println("Prova Handshake su: " + portName)
+
+		// Invia handshake (byte 255)
+		if _, err := conn.Write([]byte{255}); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("errore durante la scrittura per l'handshake: %w", err)
 		}
 
-		n, err := p.conn.Read(buf)
+		// Attendi risposta
+		n, err := conn.Read(buf)
 		if err != nil {
 			if err == io.EOF {
-				continue // Timeout, riprova
+				return nil, fmt.Errorf("nessuna risposta dalla seriale")
 			}
-			return fmt.Errorf("errore durante la lettura per l'handshake: %w", err)
+			conn.Close()
+			return nil, fmt.Errorf("errore durante la lettura per l'handshake: %w", err)
 		}
-		if n > 0 && buf[0] == 10 {
+		if n > 0 && buf[0] == 17 {
 			break
 		}
+		cycleCount++
+		if cycleCount >= 5 {
+			return nil, fmt.Errorf("nessuna risposta dalla seriale, superato limite prove")
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	fmt.Println("Arduino connesso!")
-	return nil
+	return conn, nil
 }
 
-func (p *Protocol) readByte() (byte, error) {
+func (p Protocol) readByte() (byte, error) {
 	buf := make([]byte, 1)
 	_, err := p.conn.Read(buf)
 	return buf[0], err
 }
 
 // the first two bytes should be 255 and 0, the third byte is the number of messages
-func (p *Protocol) ReadCommunicationData() (int, error) {
+func (p Protocol) ReadCommunicationData() (int, error) {
 
 	b1, err := p.readByte()
 	if err != nil {
@@ -145,7 +168,7 @@ func (p *Protocol) ReadMessage() (*Message, error) {
 	return header, nil
 }
 
-func (p *Protocol) AddVariableToSend(id byte, value []byte) {
+func (p Protocol) AddVariableToSend(id byte, value []byte) {
 
 	size := byte(len(value))
 	variablePacket := []byte{id, size}
@@ -155,7 +178,7 @@ func (p *Protocol) AddVariableToSend(id byte, value []byte) {
 	p.numVarsToSend++
 }
 
-func (p *Protocol) SendBuffer() error {
+func (p Protocol) SendBuffer() error {
 	if p.numVarsToSend == 0 {
 		return nil
 	}

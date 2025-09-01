@@ -3,6 +3,7 @@ package arduinoserial
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"server/system"
 	"time"
@@ -14,143 +15,41 @@ import (
 
 type DataFromArduino struct {
 	WindowPosition system.Degree
+	buttonPressed  bool
 }
 
 type DataToArduino struct {
-	Temperature   int16
-	OperativeMode int16 // 0 per AUTOMATIC, 1 per MANUAL
-	WindowAction  int16 // 0: None, 1: Open, 2: Close
-	SystemState   int16
+	Temperature          int
+	OperativeMode        int // 0 per AUTOMATIC, 1 per MANUAL
+	WindowAction         int // 0: None, 1: Open, 2: Close
+	SystemState          int
+	SystemWindowPosition system.Degree
 }
 
-type ArduinoReader struct {
+type Arduino struct {
 	portName string
 	baudrate int
 	timeout  time.Duration
-	conn     serial.Port
 	protocol *Protocol
 
-	Variables []*Message
-	Debugs    []*Message
-	Events    []*Message
+	Variables []Message
+	Debugs    []Message
+	Events    []Message
 }
 
-func NewArduinoReader(baudrate int, timeout time.Duration) *ArduinoReader {
-	return &ArduinoReader{
-		baudrate: baudrate,
-		timeout:  timeout,
-	}
-}
-
-func (ar *ArduinoReader) findArduinoPort() (string, error) {
-	ports, err := serial.GetPortsList()
-	if err != nil {
-		return "", err
-	}
-	if len(ports) == 0 {
-		return "", fmt.Errorf("nessuna porta seriale trovata")
-	}
-	return ports[1], nil
-}
-
-func (ar *ArduinoReader) Connect() error {
+func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan DataToArduino) {
+	var arduino *Arduino
 	var err error
-	ar.portName, err = ar.findArduinoPort()
-	if err != nil {
-		return fmt.Errorf("errore nella ricerca della porta: %w", err)
-	}
-
-	mode := &serial.Mode{
-		BaudRate: ar.baudrate,
-	}
-	ar.conn, err = serial.Open(ar.portName, mode)
-	if err != nil {
-		return fmt.Errorf("impossibile aprire la porta %s: %w", ar.portName, err)
-	}
-	ar.conn.SetReadTimeout(ar.timeout)
-
-	ar.protocol = NewProtocol(ar.conn)
-	fmt.Printf("Connesso ad Arduino su %s a %d baud.\n", ar.portName, ar.baudrate)
-
-	if err := ar.protocol.Handshake(); err != nil {
-		ar.conn.Close()
-		return fmt.Errorf("handshake fallito: %w", err)
-	}
-
-	return nil
-}
-
-func (ar *ArduinoReader) Disconnect() {
-	if ar.conn != nil {
-		ar.conn.Close()
-		fmt.Println("Connessione chiusa.")
-	}
-}
-
-func (ar *ArduinoReader) ReadData() (vars []*Message, debugs []*Message, events []*Message, err error) {
-	if ar.conn == nil {
-		return nil, nil, nil, fmt.Errorf("connessione seriale non aperta")
-	}
-
-	ar.Variables = ar.Variables[:0]
-	ar.Debugs = ar.Debugs[:0]
-	ar.Events = ar.Events[:0]
-
-	numMessages, err := ar.protocol.ReadCommunicationData()
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("errore di lettura dati comunicazione: %w", err)
-	}
-	if numMessages == 0 {
-		return ar.Variables, ar.Debugs, ar.Events, nil
-	}
-
-	for i := 0; i < numMessages; i++ {
-		msg, err := ar.protocol.ReadMessage()
+	for {
+		arduino, err = createArduino(9600, 2*time.Second)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("errore durante la lettura del messaggio %d: %w", i+1, err)
-		}
-		switch msg.MessageType {
-		case Var:
-			ar.Variables = append(ar.Variables, msg)
-		case Debug:
-			ar.Debugs = append(ar.Debugs, msg)
-		case Event:
-			ar.Events = append(ar.Events, msg)
+			log.Println("errore %w, riprovo ricerca", err)
+		} else {
+			break
 		}
 	}
 
-	return ar.Variables, ar.Debugs, ar.Events, nil
-}
-
-func (ar *ArduinoReader) AddDataToSend(id byte, value []byte) {
-	if ar.protocol == nil {
-		fmt.Println("Protocollo non inizializzato, impossibile aggiungere dati.")
-		return
-	}
-	ar.protocol.AddVariableToSend(id, value)
-}
-
-func (ar *ArduinoReader) WriteData() error {
-	if ar.conn == nil {
-		return fmt.Errorf("connessione seriale non aperta")
-	}
-	return ar.protocol.SendBuffer()
-}
-
-func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan DataFromArduino, dataToArduino <-chan DataToArduino) {
-	arduino := NewArduinoReader(9600, 5*time.Second)
-	if err := arduino.Connect(); err != nil {
-		log.Printf("ERRORE: Impossibile connettersi ad Arduino: %v. Riprovo...", err)
-		time.Sleep(5 * time.Second)
-		ManageArduino(requestChan, dataFromArduino, dataToArduino)
-		return
-	}
-	defer arduino.Disconnect()
-	log.Println("INFO: Connesso ad Arduino.")
-
-	var wasButtonPressed bool = false
-
-	// Goroutine per la scrittura: si attiva solo quando riceve un comando.
+	// Goroutine per la scrittura
 	go func() {
 		byteToSend := make([]byte, 2)
 
@@ -161,6 +60,10 @@ func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan D
 			arduino.AddDataToSend(1, byteToSend)
 			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
 			arduino.AddDataToSend(2, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemState))
+			arduino.AddDataToSend(3, byteToSend)
+			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemWindowPosition))
+			arduino.AddDataToSend(4, byteToSend)
 
 			if err := arduino.WriteData(); err != nil {
 				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
@@ -169,6 +72,7 @@ func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan D
 	}()
 
 	// Loop principale per la lettura continua da Arduino
+	wasButtonPressed := false
 	for {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
@@ -188,25 +92,131 @@ func ManageArduino(requestChan chan<- system.RequestType, dataFromArduino chan D
 			continue
 		}
 
-		isButtonPressed := (buttonState == 1)
-		// Rileva il fronte di salita del pulsante per inviare un solo comando
-		if isButtonPressed && !wasButtonPressed {
-			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
-			requestChan <- system.ToggleMode
-		}
-		wasButtonPressed = isButtonPressed
+		newData := DataFromArduino{WindowPosition: system.Degree(windowPos), buttonPressed: bool(buttonState == 1)}
 
-		newData := DataFromArduino{WindowPosition: system.Degree(windowPos)}
+		// Rileva il fronte di salita del pulsante per inviare un solo comando
+		if newData.buttonPressed && !wasButtonPressed {
+			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
+		}
+		wasButtonPressed = newData.buttonPressed
 
 		select {
 		case dataFromArduino <- newData:
 
 		default:
-			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock a fare cosi
+			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock facendo cosi
 			<-dataFromArduino
-
 			dataFromArduino <- newData
 			log.Println("WARN: Buffer dati da Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
 		}
 	}
+
+}
+
+func createArduino(baudRate int, readTimeout time.Duration) (*Arduino, error) {
+	for {
+		log.Println("Searching for arduino port")
+		arduinoConn, portName, err := findArduinoPort(baudRate, readTimeout)
+		if err != nil {
+			return nil, err
+		}
+		if arduinoConn != nil {
+			log.Println("Found arduino port: " + portName)
+			arduino := &Arduino{
+				portName: portName,
+				baudrate: baudRate,
+				timeout:  readTimeout,
+				protocol: NewProtocol(arduinoConn),
+			}
+			log.Println("INFO: Connesso ad Arduino.")
+			return arduino, nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func findArduinoPort(baudRate int, readTimeout time.Duration) (io.ReadWriteCloser, string, error) {
+	ports, err := getSerialPorts()
+	if err != nil {
+		return nil, "", fmt.Errorf("errore nella ricerca delle porte: %w", err)
+	}
+
+	for _, port := range ports {
+		conn, err := Handshake(port, baudRate, readTimeout)
+		if err == nil && conn != nil {
+			return conn, port, nil
+		}
+	}
+	return nil, "", err
+
+}
+
+func getSerialPorts() ([]string, error) {
+	ports, err := serial.GetPortsList()
+	if err != nil {
+		return nil, err
+	}
+	if len(ports) == 0 {
+		return nil, fmt.Errorf("nessuna porta seriale trovata")
+	}
+	return ports, nil
+}
+
+func (ar *Arduino) Disconnect() {
+	if ar.protocol != nil {
+		ar.protocol.conn.Close()
+		fmt.Println("Connessione chiusa.")
+		ar.protocol = nil
+	}
+}
+
+func (ar *Arduino) ReadData() (vars []Message, debugs []Message, events []Message, err error) {
+	if ar.protocol == nil {
+		return nil, nil, nil, fmt.Errorf("connessione seriale non aperta")
+	}
+
+	//clean slices
+	ar.Variables = ar.Variables[:0]
+	ar.Debugs = ar.Debugs[:0]
+	ar.Events = ar.Events[:0]
+
+	numMessages, err := ar.protocol.ReadCommunicationData()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("errore di lettura dati comunicazione: %w", err)
+	}
+	if numMessages == 0 {
+		return nil, nil, nil, fmt.Errorf("errore di lettura dati comunicazione: 0 messaggi in arrivo")
+	}
+
+	for i := 0; i < numMessages; i++ {
+		msg, err := ar.protocol.ReadMessage()
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("errore durante la lettura del messaggio %d: %w", i+1, err)
+		}
+		switch msg.MessageType {
+		case Var:
+			ar.Variables = append(ar.Variables, *msg)
+		case Debug:
+			ar.Debugs = append(ar.Debugs, *msg)
+		case Event:
+			ar.Events = append(ar.Events, *msg)
+		}
+	}
+
+	return ar.Variables, ar.Debugs, ar.Events, nil
+}
+
+func (ar *Arduino) AddDataToSend(id byte, value []byte) {
+	if ar.protocol == nil {
+		fmt.Println("Protocollo non inizializzato, impossibile aggiungere dati.")
+		return
+	}
+	ar.protocol.AddVariableToSend(id, value)
+}
+
+func (ar *Arduino) WriteData() error {
+	if ar.protocol == nil {
+		return fmt.Errorf("Protocollo non inizializzato, impossibile aggiungere dati.")
+	}
+	return ar.protocol.SendBuffer()
 }

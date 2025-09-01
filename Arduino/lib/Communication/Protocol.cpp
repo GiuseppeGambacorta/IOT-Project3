@@ -230,13 +230,13 @@ void Protocol::sendEventMessages()
 
 bool Protocol::doHandshake()
 {
+    bool connectionEstablished = false;
     if (Serial.available() > 0)
     {
         byte received = (short unsigned int)Serial.read(); //convert because i want to check a number not a char or a byte
         if (received == 255)
         {
-            Serial.write(10);
-            connectionEstablished = true;
+            Serial.write(17);
         }
     }
     return connectionEstablished;
