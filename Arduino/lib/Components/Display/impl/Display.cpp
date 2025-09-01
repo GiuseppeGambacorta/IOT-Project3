@@ -33,7 +33,7 @@ void Display::clear() {
 
 void Display::update() {
 
-    if (strcmp(this->currentMessage, this->oldMessage) == 0) {
+    if (this->currentMessage == this->oldMessage) {
         return;
     }
     lcd.clear();

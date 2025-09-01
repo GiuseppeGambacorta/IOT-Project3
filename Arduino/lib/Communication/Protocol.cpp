@@ -127,7 +127,7 @@ DataHeader *Register::getEventMessageHeader(unsigned int index)
     }
 }
 
-int *Register::getIncomingDataHeader(unsigned int index)
+int16_t *Register::getIncomingDataHeader(unsigned int index)
 {
     if (index >= 0 && index < NUMBER_OF_INCOMING_DATA)
     {
@@ -230,13 +230,14 @@ void Protocol::sendEventMessages()
 
 bool Protocol::doHandshake()
 {
-    bool connectionEstablished = false;
+   
     if (Serial.available() > 0)
     {
         byte received = (short unsigned int)Serial.read(); //convert because i want to check a number not a char or a byte
         if (received == 255)
         {
             Serial.write(17);
+            connectionEstablished = true;
         }
     }
     return connectionEstablished;
@@ -247,37 +248,26 @@ bool Protocol::isConnectionEstablished()
     return connectionEstablished;
 }
 
+
+
 void Protocol::getData()
 {
-    if (Serial.available() > 0)
+    if(Serial.available() >=10)
     {
-        byte header = Serial.read();
-        if (header == 255)
+        for (int i = 0; i < 5; i++)
         {
-            byte command = Serial.read();
-            if (command == 0) // Comando per l'aggiornamento delle variabili
-            {
-                // Legge quante variabili sono state inviate in questo pacchetto
-                byte numberOfVariables = Serial.read();
+            byte buffer[2];
+            Serial.readBytes(buffer, 2);
 
-                // Esegue un ciclo per leggere ogni variabile inviata
-                for (int i = 0; i < numberOfVariables; i++)
-                {
-                    byte id = Serial.read();
-                    byte size = Serial.read();
-                    byte buffer[size];
-                    Serial.readBytes(buffer, size);
-                    
-                    int *var = internalRegister.getIncomingDataHeader(int(id));
-                    if (var != nullptr)
-                    {
-                        // Ricostruisce l'intero in formato Little-Endian
-                        *var = (int(buffer[1]) << 8) | int(buffer[0]);
-                    }
-                }
+            int16_t *var = internalRegister.getIncomingDataHeader(i);
+            if (var != nullptr)
+            {
+                memcpy(var, buffer, 2);
             }
         }
     }
 }
+
+
 
 

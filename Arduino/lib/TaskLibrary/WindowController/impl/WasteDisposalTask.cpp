@@ -1,12 +1,7 @@
 #include "../api/WindowControllerTask.h"
 
 
-enum windowManualCommand : byte
-{
-    NONE = 0,
-    UP = 1,
-    DOWN = 2
-};
+
 
 WindowControllerTask::WindowControllerTask(
     AnalogInput &potentiometer,
@@ -17,50 +12,54 @@ WindowControllerTask::WindowControllerTask(
       manualButton(manualButton),
       motor(motor),
       display(display),
-      state(WindowManagerState::AUTOMATIC)
+      actualState(WindowManagerState::NORMAL)
 {
 
-    temperature = serialManager.getvar(0);
-    actualMode = serialManager.getvar(1);
-    windowcommand = serialManager.getvar(2);
+    
+
     serialManager.addVariableToSend((byte *)&manualButtonPressed, VarType::INT);
     serialManager.addVariableToSend((byte *)&actualWindowPosition, VarType::INT);
 }
 void WindowControllerTask::tick()
 {
-    state = (WindowManagerState) *actualMode;
+
+    temperature = *serialManager.getvar(0);
+    actualMode = WindowManagerMode(*serialManager.getvar(1));
+    windowcommand = windowManualCommand(*serialManager.getvar(2));
+    actualState = WindowManagerState(*serialManager.getvar(3));
+    systemWindowPos = *serialManager.getvar(4);
+
+
     buttonTrigger.update(manualButton.isActive());
 
     if (buttonTrigger.isActive()){
-        oldState = state;
+        oldState = actualState;
         manualButtonPressed = 1;
     } 
 
-    if (state != oldState){
+    if (actualState != oldState){
         manualButtonPressed = 0;
     }
     
-    actualWindowPosition = *temperature;
-   
-   
-   //display.write(("Window Position: " + String(motor.getPosition())).c_str());
 
-   switch (*actualMode)
+   char msg[32]; // Buffer per il messaggio
+
+    const char* modeStr;
+    switch (actualMode)
     {
     case AUTOMATIC:
-        motor.setPosition(*temperature);
-        display.write("Automatic mode");
+        modeStr = "Auto";
+        motor.setPosition(systemWindowPos);
         break;
-
     case MANUAL:
-
-        switch (*windowcommand)
+        modeStr = "Manual";
+        switch (windowcommand)
         {
         case UP:
-                motor.setPosition(motor.getPosition() + 5);
+            motor.setPosition(motor.getPosition() + 5);
             break;
         case DOWN:
-                motor.setPosition(motor.getPosition() - 5);
+            motor.setPosition(motor.getPosition() - 5);
             break;
         case NONE:
             motor.setPosition(motor.getPosition());
@@ -68,17 +67,17 @@ void WindowControllerTask::tick()
         default:
             break;
         }
-        
-        display.write("Manual mode");
-    
-       // display.write(("Temperature: " + String(*temperature)).c_str());
         break;
     default:
-        display.write("Unknown mode");
+        modeStr = "Sconosciuta";
+        motor.setPosition(systemWindowPos);
         break;
     }
+    //actualState = WindowManagerState(56);
+    snprintf(msg, sizeof(msg), "Posizione:%d, Mod:%d", motor.getPosition(), WindowManagerState(*serialManager.getvar(3)));
+    display.write(msg);
 
-   
+    // ...existing code...
 }
 
 void WindowControllerTask::reset()

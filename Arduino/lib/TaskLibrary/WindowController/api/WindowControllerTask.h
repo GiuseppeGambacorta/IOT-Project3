@@ -8,17 +8,30 @@
 
 
 
-enum WindowManagerState : byte {
+enum WindowManagerMode : int16_t {
     AUTOMATIC = 0,
     MANUAL = 1
+};
+
+enum WindowManagerState : int16_t {
+    NORMAL,
+    HOT,
+    TOO_HOT,
+    ALARM
+};
+
+enum windowManualCommand : int16_t
+{
+    NONE = 0,
+    UP = 1,
+    DOWN = 2
 };
 
 class WindowControllerTask : public Task {
 
 private:
 
-    WindowManagerState state = AUTOMATIC;
-    WindowManagerState oldState = AUTOMATIC;
+    WindowManagerState oldState = NORMAL;
     AnalogInput& potentiometer;
     DigitalInput& manualButton;
     Motor& motor;
@@ -27,9 +40,11 @@ private:
     SerialManager &serialManager = ServiceLocator::getSerialManagerInstance();
     RTrig buttonTrigger;
 
-    int *temperature;
-    int *actualMode;
-    int *windowcommand;
+    int16_t temperature;
+    WindowManagerMode actualMode;
+    windowManualCommand windowcommand;
+    WindowManagerState actualState;
+    int16_t systemWindowPos;
 
     int manualButtonPressed;
     int actualWindowPosition;

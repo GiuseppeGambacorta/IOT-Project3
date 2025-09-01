@@ -16,7 +16,7 @@ const (
 	Automatic
 )
 
-type SystemStatus int16
+type SystemStatus int
 
 const (
 	Normal SystemStatus = iota

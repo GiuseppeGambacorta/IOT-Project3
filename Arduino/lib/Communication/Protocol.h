@@ -39,8 +39,8 @@ private:
     DataHeader eventMessage[MAX_EVENTS];
     unsigned int eventCount = 0;
 
-    static const int NUMBER_OF_INCOMING_DATA = 3;
-    int datiInArrivo[NUMBER_OF_INCOMING_DATA]; //for now only int are supported
+    static const int NUMBER_OF_INCOMING_DATA = 50;
+    int16_t datiInArrivo[NUMBER_OF_INCOMING_DATA]; //for now only int are supported
 
 public:
     Register();
@@ -53,7 +53,7 @@ public:
     DataHeader *getVariableHeader(unsigned int index);
     DataHeader *getDebugMessageHeader(unsigned int index);
     DataHeader *getEventMessageHeader(unsigned int index);
-    int *getIncomingDataHeader(unsigned int index);
+    int16_t *getIncomingDataHeader(unsigned int index);
     unsigned int getVariableCount();
     unsigned int getDebugMessageCount();
     unsigned int getEventMessageCount();

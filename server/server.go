@@ -275,7 +275,7 @@ func systemManager(
 		esp32TimeoutTime  = 2 * time.Second
 		tooHotMaxDuration = 10 * time.Second
 
-		arduinoSerialFreq = 100 * time.Millisecond
+		arduinoSerialFreq = 250 * time.Millisecond
 	)
 
 	esp32TimeoutTimer := time.NewTimer(esp32TimeoutTime)
@@ -361,6 +361,7 @@ func systemManager(
 			}
 
 		case <-arduinoTimer.C:
+			arduinoTimer.Reset(arduinoSerialFreq)
 			newData := arduinoserial.DataToArduino{
 				Temperature:          int(actualSystemState.CurrentTemp),
 				OperativeMode:        int(actualSystemState.OperativeMode),
@@ -375,7 +376,7 @@ func systemManager(
 			default:
 				<-dataToArduinoChan
 				dataToArduinoChan <- newData
-				log.Println("WARN: Buffer dati per Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
+				log.Println("WARN: Buffer dati per Arduino pieno. sostituto valore.")
 			}
 
 		case <-esp32TimeoutTimer.C:

@@ -94,14 +94,14 @@ func Handshake(portName string, baudrate int, readTimeout time.Duration) (io.Rea
 	return conn, nil
 }
 
-func (p Protocol) readByte() (byte, error) {
+func (p *Protocol) readByte() (byte, error) {
 	buf := make([]byte, 1)
 	_, err := p.conn.Read(buf)
 	return buf[0], err
 }
 
 // the first two bytes should be 255 and 0, the third byte is the number of messages
-func (p Protocol) ReadCommunicationData() (int, error) {
+func (p *Protocol) ReadCommunicationData() (int, error) {
 
 	b1, err := p.readByte()
 	if err != nil {
@@ -168,27 +168,29 @@ func (p *Protocol) ReadMessage() (*Message, error) {
 	return header, nil
 }
 
-func (p Protocol) AddVariableToSend(id byte, value []byte) {
+// disabilitato header ecc del protocollo, per il momento ho problemi
+func (p *Protocol) AddVariableToSend(id byte, value []byte) {
 
-	size := byte(len(value))
-	variablePacket := []byte{id, size}
-	variablePacket = append(variablePacket, value...)
+	//size := byte(len(value))
+	//variablePacket := []byte{id, size}
+	//variablePacket = append(variablePacket, value...)
 
-	p.dataToSend = append(p.dataToSend, variablePacket...)
+	p.dataToSend = append(p.dataToSend, value...)
 	p.numVarsToSend++
 }
 
-func (p Protocol) SendBuffer() error {
+func (p *Protocol) SendBuffer() error {
 	if p.numVarsToSend == 0 {
-		return nil
+		return fmt.Errorf("nessuna variabile da inviare")
 	}
 
-	header := []byte{255, 0, p.numVarsToSend}
+	//header := []byte{255, 0, p.numVarsToSend}
 
-	finalPacket := append(header, p.dataToSend...)
+	//finalPacket := append(header, p.dataToSend...)
 
-	fmt.Printf("DEBUG: Inviando pacchetto completo (%d variabili): %v\n", p.numVarsToSend, finalPacket)
-	_, err := p.conn.Write(finalPacket)
+	fmt.Printf("var inviate: %d\n", p.numVarsToSend)
+
+	_, err := p.conn.Write(p.dataToSend)
 
 	p.dataToSend = p.dataToSend[:0]
 	p.numVarsToSend = 0

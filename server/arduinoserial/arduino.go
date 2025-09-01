@@ -64,9 +64,10 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 			arduino.AddDataToSend(3, byteToSend)
 			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemWindowPosition))
 			arduino.AddDataToSend(4, byteToSend)
-
 			if err := arduino.WriteData(); err != nil {
 				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
+			} else {
+				log.Printf("Dati inviati correttamente ad arduino")
 			}
 		}
 	}()
@@ -76,7 +77,7 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 	for {
 		vars, _, _, err := arduino.ReadData()
 		if err != nil {
-			//timeout, is not critical
+			log.Println(err)
 			continue
 		}
 
@@ -99,9 +100,11 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 			log.Println("INFO: Pressione pulsante rilevata, invio comando ToggleMode.")
 		}
 		wasButtonPressed = newData.buttonPressed
+		log.Println("dati arrivati")
 
 		select {
 		case dataFromArduino <- newData:
+			log.Println(newData.WindowPosition)
 
 		default:
 			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock facendo cosi
@@ -216,7 +219,7 @@ func (ar *Arduino) AddDataToSend(id byte, value []byte) {
 
 func (ar *Arduino) WriteData() error {
 	if ar.protocol == nil {
-		return fmt.Errorf("Protocollo non inizializzato, impossibile aggiungere dati.")
+		return fmt.Errorf("protocollo non inizializzato, impossibile aggiungere dati")
 	}
 	return ar.protocol.SendBuffer()
 }
