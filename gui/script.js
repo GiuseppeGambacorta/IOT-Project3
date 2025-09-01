@@ -47,7 +47,7 @@ function aggiornaStatoSistema(statusString) {
 }
 
 function aggiornaPosizioneFinestra(position) {
-    document.getElementById('window-level').textContent = position;
+    document.getElementById('window-level').textContent = (position * (100/90)).toFixed(2) ;
 }
 
 function aggiornaAllarmi(status) {

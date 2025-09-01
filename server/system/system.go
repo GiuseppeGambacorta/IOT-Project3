@@ -42,17 +42,18 @@ func (ss SystemStatus) String() string { // cosi si aggiungono a mano
 
 // System rimane invariato.
 type SystemState struct {
-	CurrentTemp         float64
-	AverageTemp         float64
-	MaxTemp             float64
-	MinTemp             float64
-	Status              SystemStatus
-	StatusString        string
-	SamplingInterval    time.Duration
-	DevicesOnline       map[DeviceName]bool
-	WindowPosition      Degree
-	OperativeMode       OperativeMode // "AUTOMATIC" o "MANUAL"
-	OperativeModeString string
+	CurrentTemp           float64
+	AverageTemp           float64
+	MaxTemp               float64
+	MinTemp               float64
+	Status                SystemStatus
+	StatusString          string
+	SamplingInterval      time.Duration
+	DevicesOnline         map[DeviceName]bool
+	WindowPosition        Degree
+	CommandWindowPosition Degree
+	OperativeMode         OperativeMode // "AUTOMATIC" o "MANUAL"
+	OperativeModeString   string
 }
 
 //

@@ -224,6 +224,19 @@ func manageTemperature(temp float64, tempHistory []float64, actualSystemState *s
 	return tempHistory
 }
 
+func manageMotorPosition(actualSystemState *system.SystemState, threshold1, threshold2 float64) {
+	switch actualSystemState.Status {
+	case system.Alarm, system.Too_hot:
+		actualSystemState.CommandWindowPosition = 90
+	case system.Hot:
+		actualSystemState.CommandWindowPosition = system.Degree(
+			(actualSystemState.CurrentTemp - threshold1) * (threshold2 / (threshold2 - threshold1)),
+		)
+	default:
+		actualSystemState.CommandWindowPosition = 0
+	}
+}
+
 func manageSystemLogic(
 	actualSystemState *system.SystemState,
 	threshold1, threshold2 float64,
@@ -240,17 +253,14 @@ func manageSystemLogic(
 		if actualSystemState.CurrentTemp <= threshold1 {
 			actualSystemState.Status = system.Normal
 			actualSystemState.SamplingInterval = normalFreq
-			actualSystemState.WindowPosition = 0
 			*tooHotEnteredAt = time.Time{}
 		} else if actualSystemState.CurrentTemp > threshold1 && actualSystemState.CurrentTemp <= threshold2 {
 			actualSystemState.Status = system.Hot
 			actualSystemState.SamplingInterval = fastFreq
-			actualSystemState.WindowPosition = system.Degree((actualSystemState.CurrentTemp - threshold1) * (threshold2 / (threshold2 - threshold1)))
 			*tooHotEnteredAt = time.Time{}
 		} else {
 			actualSystemState.Status = system.Too_hot
 			actualSystemState.SamplingInterval = fastFreq
-			actualSystemState.WindowPosition = 90
 			if tooHotEnteredAt.IsZero() {
 				*tooHotEnteredAt = now
 			}
@@ -261,6 +271,8 @@ func manageSystemLogic(
 			}
 		}
 	}
+
+	manageMotorPosition(actualSystemState, threshold1, threshold2)
 	actualSystemState.StatusString = actualSystemState.Status.String()
 	actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
 	if actualSystemState.Status != oldStatus {
@@ -376,22 +388,23 @@ func systemManager(
 
 		case <-arduinoTimer.C:
 			arduinoTimer.Reset(arduinoSerialFreq)
-			newData := arduinoserial.DataToArduino{
-				Temperature:          int(actualSystemState.CurrentTemp),
-				OperativeMode:        int(actualSystemState.OperativeMode),
-				WindowAction:         windowManualCommand,
-				SystemState:          int(actualSystemState.Status),
-				SystemWindowPosition: actualSystemState.WindowPosition,
-			}
-			windowManualCommand = 0
-			select {
-			case dataToArduinoChan <- newData:
-				windowManualCommand = 0
+			if actualSystemState.DevicesOnline["arduino"] {
+				newData := arduinoserial.DataToArduino{
+					Temperature:          int(actualSystemState.CurrentTemp),
+					OperativeMode:        int(actualSystemState.OperativeMode),
+					WindowAction:         windowManualCommand,
+					SystemState:          int(actualSystemState.Status),
+					SystemWindowPosition: actualSystemState.CommandWindowPosition,
+				}
+				windowManualCommand = 0 // resetto sempre
+				select {
+				case dataToArduinoChan <- newData:
 
-			default:
-				<-dataToArduinoChan
-				dataToArduinoChan <- newData
-				log.Println("WARN: Buffer dati per Arduino pieno. sostituto valore.")
+				default:
+					<-dataToArduinoChan
+					dataToArduinoChan <- newData
+					log.Println("WARN: Buffer dati per Arduino pieno. sostituto valore.")
+				}
 			}
 
 		case <-esp32TimeoutTimer.C:

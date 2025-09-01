@@ -83,7 +83,7 @@ private:
     unsigned int mapValue;
     int offset;
     float value = 0;
-    static const unsigned int maxFilterSize = 10;
+    static const unsigned int maxFilterSize = 50;
     int array[maxFilterSize] = {0};
     unsigned int filterCount = 0;
     float val_coef = 0;
