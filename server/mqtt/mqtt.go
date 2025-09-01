@@ -42,11 +42,13 @@ func ConfigureClient(broker string, clientID string, onConnectCallbacks ...func(
 	opts.OnReconnecting = func(c MQTT.Client, opts *MQTT.ClientOptions) {
 		log.Println("MQTT: tentativo di riconnessione...")
 	}
-
+	log.Println("Connessione al Broker MQTT in corso")
 	client := MQTT.NewClient(opts)
 	token := client.Connect()
+
 	if token.Wait() && token.Error() != nil {
 		return nil, token.Error()
 	}
+	log.Println("Connessione al Broker MQTT avvenuta")
 	return client, nil
 }

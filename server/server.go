@@ -247,10 +247,10 @@ func manageSystemLogic(
 			}
 		}
 	}
-
+	actualSystemState.StatusString = actualSystemState.Status.String()
+	actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
 	if actualSystemState.Status != oldStatus {
 		log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", actualSystemState.Status.String(), actualSystemState.CurrentTemp)
-		actualSystemState.StatusString = actualSystemState.Status.String()
 	}
 	if actualSystemState.SamplingInterval != oldFreq {
 		log.Printf("INFO: Frequenza di campionamento cambiata a %v", actualSystemState.SamplingInterval)
@@ -258,7 +258,7 @@ func manageSystemLogic(
 	}
 }
 
-func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState) {
+func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-chan float64, stateRequestChan <-chan chan system.SystemState, commandRequestChan <-chan system.RequestType) {
 
 	const (
 		normalFreq time.Duration = 500 * time.Millisecond
@@ -276,20 +276,21 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
 
 	actualSystemState := system.SystemState{
-		Status:           system.Normal,
-		StatusString:     system.Normal.String(),
-		SamplingInterval: normalFreq,
-		OperativeMode:    system.Automatic,
-		CurrentTemp:      0,
-		AverageTemp:      0,
-		MinTemp:          math.Inf(1),
-		MaxTemp:          math.Inf(-1),
+		Status:              system.Normal,
+		StatusString:        system.Normal.String(),
+		SamplingInterval:    normalFreq,
+		OperativeMode:       system.Automatic,
+		OperativeModeString: system.Automatic.String(),
+		CurrentTemp:         0,
+		AverageTemp:         0,
+		MinTemp:             math.Inf(1),
+		MaxTemp:             math.Inf(-1),
+		WindowPosition:      0,
 		DevicesOnline: map[system.DeviceName]bool{
 			"server":  true,
 			"esp32":   false,
 			"arduino": false,
 		},
-		WindowPosition: 0,
 	}
 
 	for {
@@ -314,6 +315,31 @@ func systemManager(intervalUpdatesChan chan<- time.Duration, tempUpdatesChan <-c
 
 		case stateRequest := <-stateRequestChan:
 			stateRequest <- actualSystemState
+
+		case commandRequest := <-commandRequestChan:
+			log.Println(commandRequest.String())
+			switch commandRequest {
+			case system.ToggleMode:
+				if actualSystemState.OperativeMode == system.Manual {
+					actualSystemState.OperativeMode = system.Automatic
+				} else {
+					actualSystemState.OperativeMode = system.Manual
+				}
+				actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
+				log.Println("Modalita attuale: " + actualSystemState.OperativeModeString)
+			case system.OpenWindow:
+				// Azione per apertura finestra
+			case system.CloseWindow:
+				// Azione per chiusura finestra
+			case system.ResetAlarm:
+				if actualSystemState.Status == system.Alarm {
+					if actualSystemState.CurrentTemp < threshold2 {
+						actualSystemState.Status = system.Normal // non perfetto, dovrei decidere in base alla temperatura, lo faccio fare quando la temperatura viene aggiornata
+					}
+				}
+			default:
+				log.Println("Comando sconosciuto")
+			}
 
 		case <-esp32TimeoutTimer.C:
 			esp32TimeoutTimer.Reset(esp32TimeoutTime)
@@ -368,8 +394,9 @@ func main() {
 
 	intervalUpdatesChan := make(chan time.Duration)
 	tempUpdatesChan := make(chan float64)
-	requestChan := make(chan system.RequestType)
-	stateReqChan := make(chan chan system.SystemState)
+	commandRequestChan := make(chan system.RequestType)
+	stateRequestChan := make(chan chan system.SystemState)
+
 	// --- Configurazione e connessione MQTT ---
 	const broker = "tcp://localhost:1883"
 	const cliendID = "iot-server"
@@ -397,9 +424,9 @@ func main() {
 		goto Error
 	}
 
-	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateReqChan)
+	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan)
 	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
-	go webserver.ApiServer(useMockApi, requestChan, stateReqChan)
+	go webserver.ApiServer(useMockApi, commandRequestChan, stateRequestChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
 	select {}

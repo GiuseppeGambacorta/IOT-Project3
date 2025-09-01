@@ -1,112 +1,3 @@
-
-function aggiornaDatiTemperatura(chart) {
-    // Assumo un endpoint che restituisca: { "current": 22.5, "average": 21.8, "max": 25.1, "min": 19.5 }
-    fetch("http://localhost:8080/api/temperature-stats")
-        .then(r => {
-            if (!r.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return r.json();
-        })
-        .then(stats => {
-           
-            document.getElementById('temp-current').textContent = stats.current.toFixed(1);
-            document.getElementById('temp-avg').textContent = stats.average.toFixed(1);
-            document.getElementById('temp-max').textContent = stats.max.toFixed(1);
-            document.getElementById('temp-min').textContent = stats.min.toFixed(1);
-
-            // 2. Aggiorna il grafico con la temperatura attuale
-            const data = chart.data;
-            data.datasets[0].data.shift();
-            data.datasets[0].data.push(stats.current);
-
-            const lastLabel = data.labels[data.labels.length - 1];
-            const newLabelIndex = parseInt(lastLabel.substring(1)) + 1;
-            data.labels.shift();
-            data.labels.push('T' + newLabelIndex);
-
-            chart.update();
-        })
-        .catch(error => {
-            console.error("Errore nell'aggiornare i dati di temperatura:", error);
-            document.getElementById('temp-current').textContent = '--';
-            document.getElementById('temp-avg').textContent = '--';
-            document.getElementById('temp-max').textContent = '--';
-            document.getElementById('temp-min').textContent = '--';
-        });
-}
-
-function controlloAllarmi(){
-    fetch("http://localhost:8080/api/get-alarms")
-        .then(r => {
-            if (!r.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return r.json();
-        })
-        .then(alarms => {
-            const button = document.getElementById('reset-alarm')
-            button.classList.toggle('in-alarm', alarms.attivo);
-            if (alarms.attivo){
-                button.textContent = "Reset Allarme";
-            } else {
-                button.textContent = "No Allarmi";   
-            }
-        })
-        .catch(error => {
-            console.error("Errore nell'aggiornare lo stato degli allarmi ", error);
-        });
-}
-
-
-function controlloModalita(){
-    fetch("http://localhost:8080/api/get-operative-mode")
-        .then(r => {
-            if (!r.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return r.json();
-        })
-        .then(data => {
-            const text = document.getElementById('actual-mode')
-            const button = document.getElementById('cambia-modalita')
-            if (data.manuale){
-                text.textContent = "Modalità Attuale: Manuale";
-                button.textContent = "Modalità Automatica"
-            } else {
-                text.textContent = "Modalità Attuale: Automatico";
-                button.textContent = "Modalità Manuale"
-            }
-        })
-        .catch(error => {
-            console.error("Errore nell'aggiornare lo stato degli allarmi ", error);
-        });
-}
-
-function aggiornaStatoDispositivi() {
-    fetch("http://localhost:8080/api/devices-states")
-        .then(r => {
-            if (!r.ok){
-                throw new Error('Network response was not ok');
-            }
-            return r.json()
-        })
-        .then(stato => {
-            document.querySelectorAll('[data-device]').forEach(link => {
-                const nome = link.getAttribute('data-device');
-                const isOnline = stato[nome] === true;
-                link.classList.toggle('online', isOnline);
-                link.classList.toggle('offline', !isOnline);
-            });
-        })
-        .catch(() => {
-            document.querySelectorAll('[data-device]').forEach(link => {
-                link.classList.add('offline');
-                link.classList.remove('online');
-            });
-        });
-}
-
 function createChartConfig(data) {
     return {
         type: 'line',
@@ -117,11 +8,101 @@ function createChartConfig(data) {
             plugins: {
                 legend: {
                     display: false
-                }
+                    }
             }
         }
     };
 }
+
+function aggiornaDatiTemperatura(data, chart) {
+    document.getElementById('temp-current').textContent = data.CurrentTemp.toFixed(1);
+    document.getElementById('temp-avg').textContent = data.AverageTemp.toFixed(1);
+    document.getElementById('temp-max').textContent = data.MaxTemp.toFixed(1);
+    document.getElementById('temp-min').textContent = data.MinTemp.toFixed(1);
+
+    // Aggiorna il grafico
+    const chartData = chart.data;
+    chartData.datasets[0].data.shift();
+    chartData.datasets[0].data.push(data.CurrentTemp);
+
+    const lastLabel = chartData.labels[chartData.labels.length - 1];
+    const newLabelIndex = parseInt(lastLabel.substring(1)) + 1;
+    chartData.labels.shift();
+    chartData.labels.push('T' + newLabelIndex);
+
+    chart.update();
+}
+
+function aggiornaStatoDispositivi(devicesStatus) {
+    document.querySelectorAll('[data-device]').forEach(link => {
+        const nome = link.getAttribute('data-device');
+        const isOnline = devicesStatus[nome] === true;
+        link.classList.toggle('online', isOnline);
+        link.classList.toggle('offline', !isOnline);
+    });
+}
+
+function aggiornaStatoSistema(statusString) {
+    document.getElementById('system-status').textContent = statusString;
+}
+
+function aggiornaPosizioneFinestra(position) {
+    document.getElementById('window-level').textContent = position;
+}
+
+function aggiornaAllarmi(status) {
+    const button = document.getElementById('reset-alarm');
+    var inAlarm = status.trim ().toUpperCase() === "ALARM"
+    console.log("Stato allarme:", status, "inAlarm:", inAlarm);
+    if (inAlarm) {
+        button.classList.add('in-alarm');
+        button.textContent = "Reset Allarme";
+      } else {
+        button.classList.remove('in-alarm');
+        button.textContent = "No Allarmi";
+    }
+}
+
+function aggiornaModalita(mode) {
+    console.log("Modalità ricevuta:", mode); // <--- aggiungi questo
+    const text = document.getElementById('actual-mode');
+    const button = document.getElementById('cambia-modalita');
+    if (mode.trim().toUpperCase() === "MANUALE") {
+        text.textContent = "Modalità Attuale: Manuale";
+        button.textContent = "Modalità Automatica";
+    } else {
+        text.textContent = "Modalità Attuale: Automatico";
+        button.textContent = "Modalità Manuale";
+    }
+}
+
+function update(chart) {
+ console.log("ciao")
+    fetch("http://localhost:8080/api/system-status")
+        .then(response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+        })
+        .then(data => {
+           
+            aggiornaDatiTemperatura(data, chart);
+            aggiornaStatoDispositivi(data.DevicesOnline);
+            aggiornaStatoSistema(data.StatusString);
+            aggiornaPosizioneFinestra(data.WindowPosition);
+            aggiornaAllarmi(data.StatusString);
+            aggiornaModalita(data.OperativeModeString);
+        })
+        .catch(error => {
+            console.error("Errore nell'aggiornare lo stato del sistema:", error);
+            document.querySelectorAll('[data-device]').forEach(link => {
+                const nome = link.getAttribute('data-device');
+                const isOnline = false
+                link.classList.toggle('online', isOnline);
+                link.classList.toggle('offline', !isOnline);
+            });
+        })
+}
+
 
 
 function sendPostRequest(url) {
@@ -139,56 +120,14 @@ function sendPostRequest(url) {
         });
 }
 
-function aggiornaStatoSistema() {
-    fetch("http://localhost:8080/api/system-status")
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            document.getElementById('system-status').textContent = data.status;
-        })
-        .catch(error => {
-            console.error("Errore nell'aggiornare lo stato del sistema:", error);
-            document.getElementById('system-status').textContent = 'ERRORE';
-        });
-}
-
-
-function aggiornaPosizioneFinestra() {
-    fetch("http://localhost:8080/api/window-position")
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            document.getElementById('window-level').textContent = data.position;
-        })
-        .catch(error => {
-            console.error("Errore nell'aggiornare la posizione della finestra:", error);
-            document.getElementById('window-level').textContent = '--';
-        });
-}
-
-
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Inizializzazione Grafico
     const NUM_PUNTI = 100;
-    const initialLabels = Array.from({
-        length: NUM_PUNTI
-    }, (_, i) => `T${i + 1}`);
+    const initialLabels = Array.from({ length: NUM_PUNTI }, (_, i) => `T${i + 1}`);
     const initialData = {
         labels: initialLabels,
         datasets: [{
             label: 'Temperatura (°C)',
-            data: Array.from({
-                length: NUM_PUNTI
-            }, () => 0),
+            data: Array.from({ length: NUM_PUNTI }, () => 0),
             borderColor: 'rgb(75, 192, 192)',
             tension: 0.1
         }]
@@ -197,23 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartConfig = createChartConfig(initialData);
     const tempChart = new Chart(document.getElementById('tempChart'), chartConfig);
 
-    aggiornaDatiTemperatura(tempChart);
-    setInterval(() => aggiornaDatiTemperatura(tempChart), 100);
-
-    aggiornaStatoDispositivi();
-    setInterval(aggiornaStatoDispositivi, 500);
-
-    aggiornaStatoSistema();
-    setInterval(aggiornaStatoSistema, 500);
-
-    aggiornaPosizioneFinestra();
-    setInterval(aggiornaPosizioneFinestra, 500);
-
-    controlloAllarmi();
-    setInterval(controlloAllarmi, 1000);
-
-    controlloModalita();
-    setInterval(controlloModalita, 1000);
+    update(tempChart);
+    setInterval(() => update(tempChart), 100);
 
     document.getElementById('cambia-modalita').addEventListener('click', () => {
         sendPostRequest('http://localhost:8080/api/change-mode');

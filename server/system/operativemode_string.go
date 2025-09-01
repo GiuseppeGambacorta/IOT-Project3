@@ -12,9 +12,9 @@ func _() {
 	_ = x[Automatic-1]
 }
 
-const _OperativeMode_name = "ManualAutomatic"
+const _OperativeMode_name = "MANUALEAUTOMATICO"
 
-var _OperativeMode_index = [...]uint8{0, 6, 15}
+var _OperativeMode_index = [...]uint8{0, 7, 17}
 
 func (i OperativeMode) String() string {
 	if i < 0 || i >= OperativeMode(len(_OperativeMode_index)-1) {

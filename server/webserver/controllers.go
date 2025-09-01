@@ -95,14 +95,15 @@ type MockController struct{}
 
 func (c *MockController) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
 	actualSystemState := system.SystemState{
-		Status:           system.Normal,
-		StatusString:     system.Normal.String(),
-		SamplingInterval: 100,
-		OperativeMode:    system.Automatic,
-		CurrentTemp:      25,
-		AverageTemp:      32,
-		MinTemp:          47,
-		MaxTemp:          12,
+		Status:              system.Normal,
+		StatusString:        system.Normal.String(),
+		SamplingInterval:    100,
+		OperativeMode:       system.Automatic,
+		OperativeModeString: system.Automatic.String(),
+		CurrentTemp:         25,
+		AverageTemp:         32,
+		MinTemp:             47,
+		MaxTemp:             12,
 		DevicesOnline: map[system.DeviceName]bool{
 			"server":  true,
 			"esp32":   false,
