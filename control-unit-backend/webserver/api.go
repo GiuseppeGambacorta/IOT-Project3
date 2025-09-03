@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"server/system"
@@ -20,7 +21,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func ApiServer(useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) {
+func ApiServer(ctx context.Context, useMock bool, commandChan chan<- system.RequestType, stateReqChan chan<- chan system.SystemState) {
 	apiController := NewController(useMock, commandChan, stateReqChan)
 	routes := map[string]http.HandlerFunc{
 		"/api/system-status": apiController.GetSystemStatus,
@@ -36,8 +37,16 @@ func ApiServer(useMock bool, commandChan chan<- system.RequestType, stateReqChan
 	fileServer := http.FileServer(http.Dir("../dashboard-frontend"))
 	http.Handle("/", fileServer)
 
+	server := &http.Server{Addr: ":8080"}
+
+	go func() {
+		<-ctx.Done()
+		log.Println("API server: Shutdown")
+		server.Shutdown(context.Background()) //passo un context locale per lo shutdonw
+	}()
+
 	log.Println("INFO: API in ascolto su :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("ERRORE: Impossibile avviare il server API: %v", err)
 	}
 }

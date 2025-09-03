@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"context"
 	"log"
 	"strconv"
 	"time"
@@ -8,13 +9,20 @@ import (
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-func MqttPublishInterval(client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
+func MqttPublishInterval(ctx context.Context, client MQTT.Client, IntervalUpdatesChan <-chan time.Duration) {
 	const configTopic = "esp32/config/interval"
 	log.Println("INFO: Publisher MQTT avviato.")
-	for interval := range IntervalUpdatesChan {
-		intervalPayload := strconv.FormatInt(interval.Milliseconds(), 10)
-		token := client.Publish(configTopic, 1, false, intervalPayload)
-		token.Wait()
+
+	for {
+		select {
+		case interval := <-IntervalUpdatesChan:
+			intervalPayload := strconv.FormatInt(interval.Milliseconds(), 10)
+			token := client.Publish(configTopic, 1, false, intervalPayload)
+			token.Wait()
+		case <-ctx.Done():
+			log.Println("MQTT Publish: Shutdown")
+			return
+		}
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"server/system"
 	"server/webserver"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -112,6 +113,7 @@ func manageSystemLogic(
 }
 
 func systemManager(
+	ctx context.Context,
 	intervalUpdatesChan chan<- time.Duration,
 	tempUpdatesChan <-chan float64,
 	stateRequestChan <-chan chan system.SystemState,
@@ -157,6 +159,7 @@ func systemManager(
 		},
 	}
 
+loop:
 	for {
 		select {
 		case temp := <-tempUpdatesChan:
@@ -243,12 +246,24 @@ func systemManager(
 				intervalUpdatesChan <- actualSystemState.SamplingInterval // aggiorno la frequenza, in modo che esp32 si possa ricollegare
 			}
 
+		case <-ctx.Done():
+			log.Println("System Manager : Shutdown")
+			break loop
 		}
 
 	}
 }
 func main() {
 
+	var wg sync.WaitGroup
+
+	startGoroutine := func(fn func()) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fn()
+		}()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -257,7 +272,6 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		log.Println("Ricevuto segnale di terminazione, chiusura in corso...")
 		cancel()
 	}()
 
@@ -295,18 +309,32 @@ func main() {
 		})
 
 	if err != nil {
+		log.Println(err)
 		goto Error
 	}
 
-	go systemManager(intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan, dataFromArduinoChan)
-	go mqtt.MqttPublishInterval(client, intervalUpdatesChan)
-	go webserver.ApiServer(useMockApi, commandRequestChan, stateRequestChan)
-	go arduinoserial.ManageArduino(dataFromArduinoChan, dataToArduinoChan)
+	startGoroutine(func() {
+		systemManager(ctx, intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan, dataFromArduinoChan)
+	})
+
+	startGoroutine(func() {
+		mqtt.MqttPublishInterval(ctx, client, intervalUpdatesChan)
+	})
+
+	startGoroutine(func() {
+		webserver.ApiServer(ctx, useMockApi, commandRequestChan, stateRequestChan)
+	})
+
+	startGoroutine(func() {
+		arduinoserial.ManageArduino(ctx, dataFromArduinoChan, dataToArduinoChan)
+	})
+
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
 	<-ctx.Done() // Blocca finché non riceve segnale di chiusura
+	log.Println("Shutdown in corso")
+	wg.Wait()
 	log.Println("Shutdown completato.")
 
 Error:
-	log.Println(err)
 }

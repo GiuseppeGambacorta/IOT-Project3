@@ -1,6 +1,7 @@
 package arduinoserial
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -37,36 +38,45 @@ type Arduino struct {
 	Events    []Message
 }
 
-func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan DataToArduino) {
+func ManageArduino(ctx context.Context, dataFromArduino chan DataFromArduino, dataToArduino <-chan DataToArduino) {
 	var arduino *Arduino
 	var err error
 	for {
-		arduino, err = createArduino(9600, 2*time.Second)
+		arduino, err = createArduino(ctx, 9600, 2*time.Second)
 		if err != nil {
+			if ctx.Err() != nil {
+				log.Println("Arduino Manager: Shutdown, chiusura richiesta durante la ricerca della porta")
+				return
+			}
 			log.Println("errore %w, riprovo ricerca", err)
 		} else {
+			defer arduino.Disconnect()
 			break
 		}
 	}
 
-	// Goroutine per la scrittura
 	go func() {
 		byteToSend := make([]byte, 2)
-
-		for cmd := range dataToArduino {
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.Temperature))
-			arduino.AddDataToSend(0, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
-			arduino.AddDataToSend(1, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
-			log.Println(cmd.WindowAction)
-			arduino.AddDataToSend(2, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemState))
-			arduino.AddDataToSend(3, byteToSend)
-			binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemWindowPosition))
-			arduino.AddDataToSend(4, byteToSend)
-			if err := arduino.WriteData(); err != nil {
-				log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("Arduino Manager: scrittura fermata dal context")
+				return
+			case cmd := <-dataToArduino:
+				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.Temperature))
+				arduino.AddDataToSend(0, byteToSend)
+				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
+				arduino.AddDataToSend(1, byteToSend)
+				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
+				log.Println(cmd.WindowAction)
+				arduino.AddDataToSend(2, byteToSend)
+				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemState))
+				arduino.AddDataToSend(3, byteToSend)
+				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemWindowPosition))
+				arduino.AddDataToSend(4, byteToSend)
+				if err := arduino.WriteData(); err != nil {
+					log.Printf("ERRORE: Impossibile inviare dati ad Arduino: %v", err)
+				}
 			}
 		}
 	}()
@@ -74,66 +84,76 @@ func ManageArduino(dataFromArduino chan DataFromArduino, dataToArduino <-chan Da
 	// Loop principale per la lettura continua da Arduino
 	wasButtonPressed := false
 	for {
-		vars, _, _, err := arduino.ReadData()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		if len(vars) < 2 {
-			log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
-			continue
-		}
-
-		buttonValue, ok1 := vars[0].Data.(int16)
-		windowPos, ok2 := vars[1].Data.(int16)
-		if !ok1 || !ok2 {
-			log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
-			continue
-		}
-
-		buttonPressed := buttonValue == 1
-		buttonTrig := false
-		// Rileva il fronte di salita del pulsante per inviare un solo comando
-		if buttonPressed && !wasButtonPressed {
-			buttonTrig = true
-		}
-		wasButtonPressed = buttonPressed
-
-		newData := DataFromArduino{WindowPosition: system.Degree(windowPos), ButtonPressed: buttonTrig}
-
 		select {
-		case dataFromArduino <- newData:
-
+		case <-ctx.Done():
+			log.Println("Arduino Manager: lettura fermata dal context")
+			return
 		default:
-			// Il canale è pieno scarto un valore e ne inserisco un altro. Runtime gestisce raceCondition in lettura sul canale, nessun problema di deadlock facendo cosi
-			<-dataFromArduino
-			dataFromArduino <- newData
-			log.Println("WARN: Buffer dati da Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
+			vars, _, _, err := arduino.ReadData()
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			if len(vars) < 2 {
+				log.Println("WARN: Ricevuto pacchetto incompleto da Arduino.")
+				continue
+			}
+
+			buttonValue, ok1 := vars[0].Data.(int16)
+			windowPos, ok2 := vars[1].Data.(int16)
+			if !ok1 || !ok2 {
+				log.Println("ERRORE: Dati da Arduino non validi o tipo inatteso.")
+				continue
+			}
+
+			buttonPressed := buttonValue == 1
+			buttonTrig := false
+			if buttonPressed && !wasButtonPressed {
+				buttonTrig = true
+			}
+			wasButtonPressed = buttonPressed
+
+			newData := DataFromArduino{WindowPosition: system.Degree(windowPos), ButtonPressed: buttonTrig}
+
+			select {
+			case dataFromArduino <- newData:
+			default:
+				<-dataFromArduino
+				dataFromArduino <- newData
+				log.Println("WARN: Buffer dati da Arduino pieno. Scartato il valore più vecchio per inserire il più recente.")
+			}
 		}
 	}
 
 }
 
-func createArduino(baudRate int, readTimeout time.Duration) (*Arduino, error) {
+func createArduino(ctx context.Context, baudRate int, readTimeout time.Duration) (*Arduino, error) {
+
 	for {
-		log.Println("Searching for arduino port")
-		arduinoConn, portName, err := findArduinoPort(baudRate, readTimeout)
-		if err != nil {
-			return nil, err
-		}
-		if arduinoConn != nil {
-			log.Println("Found arduino port: " + portName)
-			arduino := &Arduino{
-				portName: portName,
-				baudrate: baudRate,
-				timeout:  readTimeout,
-				protocol: NewProtocol(arduinoConn),
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("Arduino Manager stopped meanwhile searching for arduino port")
+		default:
+			log.Println("Searching for arduino port")
+			arduinoConn, portName, err := findArduinoPort(baudRate, readTimeout)
+			if err != nil {
+				return nil, err
 			}
-			log.Println("INFO: Connesso ad Arduino.")
-			return arduino, nil
+			if arduinoConn != nil {
+				log.Println("Found arduino port: " + portName)
+				arduino := &Arduino{
+					portName: portName,
+					baudrate: baudRate,
+					timeout:  readTimeout,
+					protocol: NewProtocol(arduinoConn),
+				}
+				log.Println("INFO: Connesso ad Arduino.")
+				return arduino, nil
+			}
+			time.Sleep(1 * time.Second)
+
 		}
-		time.Sleep(1 * time.Second)
 	}
 }
 
