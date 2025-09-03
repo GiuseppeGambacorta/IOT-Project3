@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math"
+	"os"
+	"os/signal"
 	"server/arduinoserial"
 	"server/mqtt"
 	"server/system"
 	"server/webserver"
 	"strconv"
+	"syscall"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -245,6 +249,18 @@ func systemManager(
 }
 func main() {
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Goroutine per ascoltare SIGINT/SIGTERM
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		log.Println("Ricevuto segnale di terminazione, chiusura in corso...")
+		cancel()
+	}()
+
 	useMockApi := true
 
 	intervalUpdatesChan := make(chan time.Duration)
@@ -288,7 +304,8 @@ func main() {
 	go arduinoserial.ManageArduino(dataFromArduinoChan, dataToArduinoChan)
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
-	select {}
+	<-ctx.Done() // Blocca finché non riceve segnale di chiusura
+	log.Println("Shutdown completato.")
 
 Error:
 	log.Println(err)
