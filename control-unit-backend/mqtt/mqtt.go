@@ -32,9 +32,9 @@ func ConfigureClient(broker string, clientID string, onConnectCallbacks ...func(
 	opts.SetClientID(clientID)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(2 * time.Second)
-	opts.SetKeepAlive(30 * time.Second)
-	opts.SetPingTimeout(10 * time.Second)
+	opts.SetConnectRetryInterval(500 * time.Millisecond)
+	opts.SetKeepAlive(3 * time.Second)
+	opts.SetPingTimeout(1 * time.Second)
 	opts.SetCleanSession(true)
 
 	// Log di connessione/disconnessione

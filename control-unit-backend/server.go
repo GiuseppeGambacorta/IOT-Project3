@@ -18,100 +18,6 @@ import (
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
-const (
-	MaxTemperatureBuffer = 100
-)
-
-func toggleMode(actualSystemState *system.SystemState) {
-	if actualSystemState.OperativeMode == system.Manual {
-		actualSystemState.OperativeMode = system.Automatic
-	} else {
-		actualSystemState.OperativeMode = system.Manual
-	}
-	actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
-	log.Println("Modalita attuale: " + actualSystemState.OperativeModeString)
-}
-
-func manageTemperature(temp float64, tempHistory []float64, actualSystemState *system.SystemState) []float64 {
-	tempHistory = append(tempHistory, temp)
-	if len(tempHistory) > MaxTemperatureBuffer {
-		tempHistory = tempHistory[1:]
-	}
-	var sum float64
-	for _, t := range tempHistory {
-		sum += t
-		if t < actualSystemState.MinTemp {
-			actualSystemState.MinTemp = t
-		}
-		if t > actualSystemState.MaxTemp {
-			actualSystemState.MaxTemp = t
-		}
-	}
-	actualSystemState.CurrentTemp = temp
-	actualSystemState.AverageTemp = sum / float64(len(tempHistory))
-	return tempHistory
-}
-
-func manageMotorPosition(actualSystemState *system.SystemState, threshold1, threshold2 float64) {
-	switch actualSystemState.Status {
-	case system.Alarm, system.Too_hot:
-		actualSystemState.CommandWindowPosition = 90
-	case system.Hot:
-		actualSystemState.CommandWindowPosition = system.Degree(
-			(actualSystemState.CurrentTemp - threshold1) * (threshold2 / (threshold2 - threshold1)),
-		)
-	default:
-		actualSystemState.CommandWindowPosition = 0
-	}
-}
-
-func manageSystemLogic(
-	actualSystemState *system.SystemState,
-	threshold1, threshold2 float64,
-	normalFreq, fastFreq time.Duration,
-	intervalUpdatesChan chan<- time.Duration,
-	tooHotEnteredAt *time.Time,
-	tooHotMaxDuration time.Duration) {
-
-	oldStatus := actualSystemState.Status
-	oldFreq := actualSystemState.SamplingInterval
-	now := time.Now()
-
-	if actualSystemState.Status != system.Alarm {
-		if actualSystemState.CurrentTemp <= threshold1 {
-			actualSystemState.Status = system.Normal
-			actualSystemState.SamplingInterval = normalFreq
-			*tooHotEnteredAt = time.Time{}
-		} else if actualSystemState.CurrentTemp > threshold1 && actualSystemState.CurrentTemp <= threshold2 {
-			actualSystemState.Status = system.Hot
-			actualSystemState.SamplingInterval = fastFreq
-			*tooHotEnteredAt = time.Time{}
-		} else {
-			actualSystemState.Status = system.Too_hot
-			actualSystemState.SamplingInterval = fastFreq
-			if tooHotEnteredAt.IsZero() {
-				*tooHotEnteredAt = now
-			}
-			if !tooHotEnteredAt.IsZero() && now.Sub(*tooHotEnteredAt) > tooHotMaxDuration {
-				actualSystemState.Status = system.Alarm
-				log.Println("ALLARME: Temperatura troppo alta per troppo tempo! Stato -> Alarm")
-				*tooHotEnteredAt = time.Time{}
-			}
-		}
-	}
-
-	manageMotorPosition(actualSystemState, threshold1, threshold2)
-	actualSystemState.StatusString = actualSystemState.Status.String()
-	actualSystemState.OperativeModeString = actualSystemState.OperativeMode.String()
-	if actualSystemState.Status != oldStatus {
-		log.Printf("ATTENZIONE: Cambio di stato -> %s (Temp: %.1f°C)", actualSystemState.Status.String(), actualSystemState.CurrentTemp)
-	}
-	if actualSystemState.SamplingInterval != oldFreq {
-		log.Printf("INFO: Frequenza di campionamento cambiata a %v", actualSystemState.SamplingInterval)
-		intervalUpdatesChan <- actualSystemState.SamplingInterval
-	}
-}
-
 func systemManager(
 	ctx context.Context,
 	intervalUpdatesChan chan<- time.Duration,
@@ -137,7 +43,7 @@ func systemManager(
 	arduinoTimer := time.NewTimer(arduinoSerialFreq)
 	var tooHotEnteredAt time.Time
 
-	var tempHistory = make([]float64, 0, MaxTemperatureBuffer)
+	var tempHistory = make([]float64, 0, system.MaxTemperatureBuffer)
 
 	windowManualCommand := 0
 
@@ -169,9 +75,9 @@ loop:
 				actualSystemState.DevicesOnline["esp32"] = true
 			}
 
-			tempHistory = manageTemperature(temp, tempHistory, &actualSystemState)
+			tempHistory = system.ManageTemperature(temp, tempHistory, &actualSystemState)
 
-			manageSystemLogic(
+			system.ManageSystemLogic(
 				&actualSystemState,
 				threshold1, threshold2,
 				normalFreq, fastFreq,
@@ -186,18 +92,18 @@ loop:
 		case commandRequest := <-commandRequestChan:
 			switch commandRequest {
 			case system.ToggleMode:
-				toggleMode(&actualSystemState)
+				system.ToggleActualMode(&actualSystemState)
 			case system.OpenWindow:
 				if actualSystemState.OperativeMode == system.Manual {
-					windowManualCommand = 1
+					windowManualCommand = system.CmdCloseWindow
 				} else {
-					windowManualCommand = 0
+					windowManualCommand = system.NoCommand
 				}
 			case system.CloseWindow:
 				if actualSystemState.OperativeMode == system.Manual {
-					windowManualCommand = 2
+					windowManualCommand = system.CmdCloseWindow
 				} else {
-					windowManualCommand = 0
+					windowManualCommand = system.NoCommand
 				}
 			case system.ResetAlarm:
 				if actualSystemState.Status == system.Alarm {
@@ -212,7 +118,7 @@ loop:
 		case data := <-dataFromArduinoChan:
 			actualSystemState.WindowPosition = data.WindowPosition
 			if data.ButtonPressed {
-				toggleMode(&actualSystemState)
+				system.ToggleActualMode(&actualSystemState)
 			}
 			actualSystemState.DevicesOnline["arduino"] = true
 
@@ -254,7 +160,7 @@ loop:
 	}
 }
 func main() {
-
+	useMockApi := false
 	var wg sync.WaitGroup
 
 	startGoroutine := func(fn func()) {
@@ -274,8 +180,6 @@ func main() {
 		<-sigCh
 		cancel()
 	}()
-
-	useMockApi := true
 
 	intervalUpdatesChan := make(chan time.Duration)
 	tempUpdatesChan := make(chan float64)
@@ -317,17 +221,11 @@ func main() {
 		systemManager(ctx, intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan, dataFromArduinoChan)
 	})
 
-	startGoroutine(func() {
-		mqtt.MqttPublishInterval(ctx, client, intervalUpdatesChan)
-	})
+	startGoroutine(func() { mqtt.MqttPublishInterval(ctx, client, intervalUpdatesChan) })
 
-	startGoroutine(func() {
-		webserver.ApiServer(ctx, useMockApi, commandRequestChan, stateRequestChan)
-	})
+	startGoroutine(func() { webserver.ApiServer(ctx, useMockApi, commandRequestChan, stateRequestChan) })
 
-	startGoroutine(func() {
-		arduinoserial.ManageArduino(ctx, dataFromArduinoChan, dataToArduinoChan)
-	})
+	startGoroutine(func() { arduinoserial.ManageArduino(ctx, dataFromArduinoChan, dataToArduinoChan) })
 
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 

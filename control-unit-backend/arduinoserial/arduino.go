@@ -68,7 +68,6 @@ func ManageArduino(ctx context.Context, dataFromArduino chan DataFromArduino, da
 				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.OperativeMode))
 				arduino.AddDataToSend(1, byteToSend)
 				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.WindowAction))
-				log.Println(cmd.WindowAction)
 				arduino.AddDataToSend(2, byteToSend)
 				binary.LittleEndian.PutUint16(byteToSend, uint16(cmd.SystemState))
 				arduino.AddDataToSend(3, byteToSend)
