@@ -18,15 +18,19 @@ import (
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
+type Channels struct {
+	IntervalUpdatesChan chan time.Duration
+	TempUpdatesChan     chan float64
+	CommandRequestChan  chan system.RequestType
+	StateRequestChan    chan chan system.SystemState
+	DataFromArduinoChan chan arduinoserial.DataFromArduino
+	DataToArduinoChan   chan arduinoserial.DataToArduino
+}
+
 func systemManager(
 	ctx context.Context,
-	intervalUpdatesChan chan<- time.Duration,
-	tempUpdatesChan <-chan float64,
-	stateRequestChan <-chan chan system.SystemState,
-	commandRequestChan <-chan system.RequestType,
-	dataToArduinoChan chan arduinoserial.DataToArduino,
-	dataFromArduinoChan <-chan arduinoserial.DataFromArduino) {
-
+	ch Channels,
+) {
 	const (
 		normalFreq time.Duration = 500 * time.Millisecond
 		fastFreq   time.Duration = 100 * time.Millisecond
@@ -68,7 +72,7 @@ func systemManager(
 loop:
 	for {
 		select {
-		case temp := <-tempUpdatesChan:
+		case temp := <-ch.TempUpdatesChan:
 			esp32TimeoutTimer.Reset(esp32TimeoutTime)
 			if !actualSystemState.DevicesOnline["esp32"] {
 				log.Println("INFO: Dispositivo ESP32 è ora ONLINE.")
@@ -81,15 +85,15 @@ loop:
 				&actualSystemState,
 				threshold1, threshold2,
 				normalFreq, fastFreq,
-				intervalUpdatesChan,
+				ch.IntervalUpdatesChan,
 				&tooHotEnteredAt,
 				tooHotMaxDuration,
 			)
 
-		case stateRequest := <-stateRequestChan:
+		case stateRequest := <-ch.StateRequestChan:
 			stateRequest <- actualSystemState
 
-		case commandRequest := <-commandRequestChan:
+		case commandRequest := <-ch.CommandRequestChan:
 			switch commandRequest {
 			case system.ToggleMode:
 				system.ToggleActualMode(&actualSystemState)
@@ -108,14 +112,14 @@ loop:
 			case system.ResetAlarm:
 				if actualSystemState.Status == system.Alarm {
 					if actualSystemState.CurrentTemp < threshold2 {
-						actualSystemState.Status = system.Normal // non perfetto, dovrei decidere in base alla temperatura, lo faccio fare quando la temperatura viene aggiornata
+						actualSystemState.Status = system.Normal
 					}
 				}
 			default:
 				log.Println("Comando sconosciuto")
 			}
 
-		case data := <-dataFromArduinoChan:
+		case data := <-ch.DataFromArduinoChan:
 			actualSystemState.WindowPosition = data.WindowPosition
 			if data.ButtonPressed {
 				system.ToggleActualMode(&actualSystemState)
@@ -132,13 +136,12 @@ loop:
 					SystemState:          int(actualSystemState.Status),
 					SystemWindowPosition: actualSystemState.CommandWindowPosition,
 				}
-				windowManualCommand = 0 // resetto sempre
+				windowManualCommand = 0
 				select {
-				case dataToArduinoChan <- newData:
-
+				case ch.DataToArduinoChan <- newData:
 				default:
-					<-dataToArduinoChan
-					dataToArduinoChan <- newData
+					<-ch.DataToArduinoChan
+					ch.DataToArduinoChan <- newData
 					log.Println("WARN: Buffer dati per Arduino pieno. sostituto valore.")
 				}
 			}
@@ -149,18 +152,18 @@ loop:
 				log.Println("ATTENZIONE: Dispositivo ESP32 è andato OFFLINE (timeout).")
 				actualSystemState.DevicesOnline["esp32"] = false
 			} else {
-				intervalUpdatesChan <- actualSystemState.SamplingInterval // aggiorno la frequenza, in modo che esp32 si possa ricollegare
+				ch.IntervalUpdatesChan <- actualSystemState.SamplingInterval
 			}
 
 		case <-ctx.Done():
 			log.Println("System Manager : Shutdown")
 			break loop
 		}
-
 	}
 }
+
 func main() {
-	useMockApi := false
+	useMockApi := true
 	var wg sync.WaitGroup
 
 	startGoroutine := func(fn func()) {
@@ -173,7 +176,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Goroutine per ascoltare SIGINT/SIGTERM
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -181,25 +183,25 @@ func main() {
 		cancel()
 	}()
 
-	intervalUpdatesChan := make(chan time.Duration)
-	tempUpdatesChan := make(chan float64)
-	commandRequestChan := make(chan system.RequestType)
-	stateRequestChan := make(chan chan system.SystemState)
+	// --- Canali ---
+	ch := Channels{
+		IntervalUpdatesChan: make(chan time.Duration),
+		TempUpdatesChan:     make(chan float64),
+		CommandRequestChan:  make(chan system.RequestType),
+		StateRequestChan:    make(chan chan system.SystemState),
+		DataFromArduinoChan: make(chan arduinoserial.DataFromArduino, 20),
+		DataToArduinoChan:   make(chan arduinoserial.DataToArduino, 1),
+	}
 
-	dataFromArduinoChan := make(chan arduinoserial.DataFromArduino, 20) //buffered chan, se e piena, faccio lo shift dei dati
-	dataToArduinoChan := make(chan arduinoserial.DataToArduino, 1)      // buffered chan, se e piena, scarto il vecchio comando e metto quello nuovo
-
-	// --- Configurazione e connessione MQTT ---
+	// --- MQTT ---
 	const broker = "tcp://localhost:1883"
 	const cliendID = "iot-server"
 	const tempTopic = "esp32/data/temperature"
 
-	// --- Handler per i messaggi di temperatura ---
 	var temperatureMessageHandler MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
 		temp, err := strconv.ParseFloat(string(msg.Payload()), 64)
 		if err == nil {
-
-			tempUpdatesChan <- temp
+			ch.TempUpdatesChan <- temp
 		} else {
 			log.Println("errore lettura temperatura")
 		}
@@ -207,7 +209,7 @@ func main() {
 
 	client, err := mqtt.ConfigureClient(broker, cliendID,
 		func(c MQTT.Client) {
-			if token := c.Subscribe("esp32/data/temperature", 1, temperatureMessageHandler); token.Wait() && token.Error() != nil {
+			if token := c.Subscribe(tempTopic, 1, temperatureMessageHandler); token.Wait() && token.Error() != nil {
 				log.Printf("MQTT: errore nella risottoscrizione: %v", token.Error())
 			}
 		})
@@ -218,18 +220,18 @@ func main() {
 	}
 
 	startGoroutine(func() {
-		systemManager(ctx, intervalUpdatesChan, tempUpdatesChan, stateRequestChan, commandRequestChan, dataToArduinoChan, dataFromArduinoChan)
+		systemManager(ctx, ch)
 	})
 
-	startGoroutine(func() { mqtt.MqttPublishInterval(ctx, client, intervalUpdatesChan) })
+	startGoroutine(func() { mqtt.MqttPublishInterval(ctx, client, ch.IntervalUpdatesChan) })
 
-	startGoroutine(func() { webserver.ApiServer(ctx, useMockApi, commandRequestChan, stateRequestChan) })
+	startGoroutine(func() { webserver.ApiServer(ctx, useMockApi, ch.CommandRequestChan, ch.StateRequestChan) })
 
-	startGoroutine(func() { arduinoserial.ManageArduino(ctx, dataFromArduinoChan, dataToArduinoChan) })
+	startGoroutine(func() { arduinoserial.ManageArduino(ctx, ch.DataFromArduinoChan, ch.DataToArduinoChan) })
 
 	log.Println("INFO: Tutti i servizi sono stati avviati.")
 
-	<-ctx.Done() // Blocca finché non riceve segnale di chiusura
+	<-ctx.Done()
 	log.Println("Shutdown in corso")
 	wg.Wait()
 	log.Println("Shutdown completato.")
